@@ -16,6 +16,7 @@ const (
 )
 
 type gauge float64
+type counter int64
 
 func main() {
 
@@ -24,13 +25,13 @@ func main() {
 
 	pollTicker := time.NewTicker(pollIntervalSec * time.Second)
 	reportTicker := time.NewTicker(reportIntervalSec * time.Second)
-	pollCount := 0
+	var pollCount counter = 0
 
 	for {
 		select {
 		case <-pollTicker.C:
 			// обновляем метрики runtime
-			recollectGaugeMetrics(metricsMap)
+			readMemStatMetrics(metricsMap)
 			pollCount++
 
 		case <-reportTicker.C:
@@ -43,7 +44,7 @@ func main() {
 }
 
 func buildUpdateMetricUrl(metricType string, metricNm string, metricVal string) string {
-	return serverHost + "/update/" + metricType + "/" + metricNm + "/" + metricVal
+	return "update/" + metricType + "/" + metricNm + "/" + metricVal
 }
 
 func sendRequest(client *http.Client, url string) {
@@ -69,17 +70,17 @@ func sendGaugeMetrics(client *http.Client, metrics map[string]gauge) {
 	}
 }
 
-func sendCounterMetric(client *http.Client, metricName string, metricValue int) {
-	url := buildUpdateMetricUrl("counter", metricName, strconv.Itoa(metricValue))
+func sendCounterMetric(client *http.Client, metricName string, metricValue counter) {
+	url := serverHost + "/" + buildUpdateMetricUrl("counter", metricName, strconv.Itoa(int(metricValue)))
 	sendRequest(client, url)
 }
 
 func sendGaugeMetric(client *http.Client, metricName string, metricValue gauge) {
-	url := buildUpdateMetricUrl("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
+	url := serverHost + "/" + buildUpdateMetricUrl("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
 	sendRequest(client, url)
 }
 
-func recollectGaugeMetrics(metrics map[string]gauge) {
+func readMemStatMetrics(metrics map[string]gauge) {
 	var memStats runtime.MemStats
 
 	runtime.ReadMemStats(&memStats)

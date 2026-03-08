@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"net/http"
 	"strconv"
 
@@ -17,10 +16,6 @@ func main() {
 
 	r := chi.NewRouter()
 
-	r.Get("/", func(rw http.ResponseWriter, r *http.Request) {
-		io.WriteString(rw, "Hello, world!")
-	})
-
 	r.Route("/update", func(r chi.Router) {
 		r.Route("/{metric-type}", func(r chi.Router) {
 			r.Route("/{metric-name}", func(r chi.Router) {
@@ -31,14 +26,17 @@ func main() {
 
 	// r передаётся как http.Handler
 	http.ListenAndServe(":8080", r)
-
 }
 
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
-	// тут работа с метрикой
 	metricType := chi.URLParam(r, "metric-type")
-	//metricName := chi.URLParam(r, "metric-name")
+	metricName := chi.URLParam(r, "metric-name")
 	metricValue := chi.URLParam(r, "metric-value")
+
+	if metricName == "" {
+		http.Error(rw, "metric name required", http.StatusNotFound)
+		return
+	}
 
 	switch metricType {
 	case "counter":
