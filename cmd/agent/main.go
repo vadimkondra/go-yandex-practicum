@@ -43,7 +43,7 @@ func main() {
 	}
 }
 
-func buildUpdateMetricUrl(metricType string, metricNm string, metricVal string) string {
+func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) string {
 	return "update/" + metricType + "/" + metricNm + "/" + metricVal
 }
 
@@ -55,6 +55,8 @@ func sendRequest(client *http.Client, url string) {
 	}
 
 	response, err := client.Do(req)
+
+	defer response.Body.Close()
 
 	if err != nil {
 		panic(err)
@@ -71,12 +73,12 @@ func sendGaugeMetrics(client *http.Client, metrics map[string]gauge) {
 }
 
 func sendCounterMetric(client *http.Client, metricName string, metricValue counter) {
-	url := serverHost + "/" + buildUpdateMetricUrl("counter", metricName, strconv.Itoa(int(metricValue)))
+	url := serverHost + "/" + buildUpdateMetricURL("counter", metricName, strconv.Itoa(int(metricValue)))
 	sendRequest(client, url)
 }
 
 func sendGaugeMetric(client *http.Client, metricName string, metricValue gauge) {
-	url := serverHost + "/" + buildUpdateMetricUrl("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
+	url := serverHost + "/" + buildUpdateMetricURL("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
 	sendRequest(client, url)
 }
 

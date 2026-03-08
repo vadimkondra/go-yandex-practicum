@@ -46,7 +46,7 @@ func TestReadMemStatMetrics_AllMetricsPresent(t *testing.T) {
 }
 
 func TestBuildUpdateMetricURL(t *testing.T) {
-	got := buildUpdateMetricUrl("gauge", "Alloc", "123")
+	got := buildUpdateMetricURL("gauge", "Alloc", "123")
 	want := "update/gauge/Alloc/123"
 
 	if got != want {
