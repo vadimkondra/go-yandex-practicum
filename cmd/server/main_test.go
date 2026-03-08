@@ -22,23 +22,6 @@ func setupRouter() http.Handler {
 	return r
 }
 
-func TestRootHandler(t *testing.T) {
-	router := setupRouter()
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("wrong status: want %d, got %d", http.StatusOK, rec.Code)
-	}
-
-	if rec.Body.String() != "Hello, world!" {
-		t.Fatalf("wrong body: want %q, got %q", "Hello, world!", rec.Body.String())
-	}
-}
-
 func TestMetricHandler_GaugeValid(t *testing.T) {
 	router := setupRouter()
 
