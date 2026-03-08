@@ -55,12 +55,10 @@ func sendRequest(client *http.Client, url string) {
 	}
 
 	response, err := client.Do(req)
-
-	defer response.Body.Close()
-
 	if err != nil {
 		panic(err)
 	}
+	defer response.Body.Close()
 
 	fmt.Println("url:", url)
 	fmt.Println("Status:", response.Status)
