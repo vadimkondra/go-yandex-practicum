@@ -2,17 +2,51 @@ package main
 
 import (
 	"fmt"
-	"io"
+	"math/rand"
 	"net/http"
+	"runtime"
+	"strconv"
+	"time"
 )
+
+const (
+	serverHost        = "http://localhost:8080"
+	pollIntervalSec   = 2
+	reportIntervalSec = 10
+)
+
+type gauge float64
 
 func main() {
 
-	url := initUrl()
-
-	fmt.Println("Sending request to:", url)
-
 	client := &http.Client{}
+	metricsMap := make(map[string]gauge)
+
+	pollTicker := time.NewTicker(pollIntervalSec * time.Second)
+	reportTicker := time.NewTicker(reportIntervalSec * time.Second)
+	pollCount := 0
+
+	for {
+		select {
+		case <-pollTicker.C:
+			// обновляем метрики runtime
+			recollectGaugeMetrics(metricsMap)
+			pollCount++
+
+		case <-reportTicker.C:
+			// отправляем метрики на сервер
+			sendGaugeMetrics(client, metricsMap)
+
+			sendCounterMetric(client, "PollCount", pollCount)
+		}
+	}
+}
+
+func buildUpdateMetricUrl(metricType string, metricNm string, metricVal string) string {
+	return serverHost + "/update/" + metricType + "/" + metricNm + "/" + metricVal
+}
+
+func sendRequest(client *http.Client, url string) {
 	req, err := http.NewRequest(http.MethodPost, url, nil)
 
 	if err != nil {
@@ -25,19 +59,58 @@ func main() {
 		panic(err)
 	}
 
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		panic(err)
-	}
-
+	fmt.Println("url:", url)
 	fmt.Println("Status:", response.Status)
-	fmt.Println("Body:", string(body))
-
-	defer response.Body.Close()
 }
 
-func initUrl() string {
-	serverHost := "http://localhost:8080"
+func sendGaugeMetrics(client *http.Client, metrics map[string]gauge) {
+	for metricName, metricValue := range metrics {
+		sendGaugeMetric(client, metricName, metricValue)
+	}
+}
 
-	return serverHost + "/update/counter/testCounter/100"
+func sendCounterMetric(client *http.Client, metricName string, metricValue int) {
+	url := buildUpdateMetricUrl("counter", metricName, strconv.Itoa(metricValue))
+	sendRequest(client, url)
+}
+
+func sendGaugeMetric(client *http.Client, metricName string, metricValue gauge) {
+	url := buildUpdateMetricUrl("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
+	sendRequest(client, url)
+}
+
+func recollectGaugeMetrics(metrics map[string]gauge) {
+	var memStats runtime.MemStats
+
+	runtime.ReadMemStats(&memStats)
+
+	metrics["Alloc"] = gauge(memStats.Alloc)
+	metrics["BuckHashSys"] = gauge(memStats.BuckHashSys)
+	metrics["Frees"] = gauge(memStats.Frees)
+	metrics["GCCPUFraction"] = gauge(memStats.GCCPUFraction)
+	metrics["GCSys"] = gauge(memStats.GCSys)
+	metrics["HeapAlloc"] = gauge(memStats.HeapAlloc)
+	metrics["HeapIdle"] = gauge(memStats.HeapIdle)
+	metrics["HeapInuse"] = gauge(memStats.HeapInuse)
+	metrics["HeapObjects"] = gauge(memStats.HeapObjects)
+	metrics["HeapReleased"] = gauge(memStats.HeapReleased)
+	metrics["HeapSys"] = gauge(memStats.HeapSys)
+	metrics["LastGC"] = gauge(memStats.LastGC)
+	metrics["Lookups"] = gauge(memStats.Lookups)
+	metrics["MCacheInuse"] = gauge(memStats.MCacheInuse)
+	metrics["MCacheSys"] = gauge(memStats.MCacheSys)
+	metrics["MSpanInuse"] = gauge(memStats.MSpanInuse)
+	metrics["MSpanSys"] = gauge(memStats.MSpanSys)
+	metrics["Mallocs"] = gauge(memStats.Mallocs)
+	metrics["NextGC"] = gauge(memStats.NextGC)
+	metrics["NumForcedGC"] = gauge(memStats.NumForcedGC)
+	metrics["NumGC"] = gauge(memStats.NumGC)
+	metrics["OtherSys"] = gauge(memStats.OtherSys)
+	metrics["PauseTotalNs"] = gauge(memStats.PauseTotalNs)
+	metrics["StackInuse"] = gauge(memStats.StackInuse)
+	metrics["StackSys"] = gauge(memStats.StackSys)
+	metrics["Sys"] = gauge(memStats.Sys)
+	metrics["TotalAlloc"] = gauge(memStats.TotalAlloc)
+
+	metrics["RandomValue"] = gauge(rand.Float64())
 }
