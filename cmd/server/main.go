@@ -13,6 +13,5 @@ type MemStorage struct {
 func main() {
 	r := handler.ConfigServerRouter()
 
-	// r передаётся как http.Handler
 	http.ListenAndServe(":8080", r)
 }

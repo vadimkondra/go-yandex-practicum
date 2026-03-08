@@ -27,10 +27,14 @@ func ConfigServerRouter() http.Handler {
 }
 
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
-	// тут работа с метрикой
 	metricType := chi.URLParam(r, "metric-type")
 	metricName := chi.URLParam(r, "metric-name")
 	metricValue := chi.URLParam(r, "metric-value")
+
+	if metricName == "" {
+		http.Error(rw, "metric name required", http.StatusNotFound)
+		return
+	}
 
 	switch metricType {
 	case "counter":
