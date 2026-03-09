@@ -1,11 +1,9 @@
 package config
 
-import "time"
-
 type AgentConfig struct {
 	ServerAddress  string
-	PollInterval   time.Duration
-	ReportInterval time.Duration
+	PollInterval   int
+	ReportInterval int
 }
 
 type ServerConfig struct {
