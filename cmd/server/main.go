@@ -20,6 +20,9 @@ type MetricsStorage interface {
 
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
+
+	GetAllGauges() map[string]float64
+	GetAllCounters() map[string]int64
 }
 
 const (
@@ -36,13 +39,15 @@ var storage = MemStorage{
 func main() {
 	r := ConfigServerRouter()
 
-	http.ListenAndServe(":8080", r)
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		panic(err)
+	}
 }
 
 func ConfigServerRouter() http.Handler {
 	r := chi.NewRouter()
 
-	r.Get("/", getMetricsList)
+	r.Get("/", getMetricsListHandler)
 
 	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
 
@@ -74,7 +79,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		handleCounter(&storage, metricName, val)
+		addCounter(&storage, metricName, val)
 
 	case "gauge":
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -82,62 +87,68 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		handleGauge(&storage, metricName, val)
+		setGauge(&storage, metricName, val)
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
 		return
 	}
+
+	rw.WriteHeader(http.StatusOK)
 }
 
-func handleGauge(storage *MemStorage, metricName string, metricValue float64) {
-	// здесь логика обработки gauge метрики
-
+func setGauge(storage MetricsStorage, metricName string, metricValue float64) {
 	storage.SetGauge(metricName, metricValue)
 }
 
-func handleCounter(storage *MemStorage, metricName string, metricValue int64) {
-	// здесь логика обработки counter метрики
-
+func addCounter(storage MetricsStorage, metricName string, metricValue int64) {
 	storage.AddCounter(metricName, metricValue)
 }
 
-func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
-	// тут логика получения значения метрики
+func getGauge(storage MetricsStorage, metricName string) (float64, bool) {
+	return storage.GetGauge(metricName)
+}
 
+func getCounter(storage MetricsStorage, metricName string) (int64, bool) {
+	return storage.GetCounter(metricName)
+}
+
+func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, metricTypeRouteName)
 	metricName := chi.URLParam(r, metricNameRouteName)
 
 	switch metricType {
 	case "counter":
-		value, ok := storage.GetCounter(metricName)
+		value, ok := getCounter(&storage, metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
 		}
 
-		GetResponseWithMetricValue(rw, strconv.FormatInt(value, 10))
+		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case "gauge":
-		value, ok := storage.GetGauge(metricName)
+		value, ok := getGauge(&storage, metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
 		}
 
-		GetResponseWithMetricValue(rw, strconv.FormatFloat(value, 'f', -1, 64))
+		writeMetricValueResponse(rw, strconv.FormatFloat(value, 'f', -1, 64))
 	default:
 		http.Error(rw, "unknown metric type", http.StatusNotFound)
 		return
 	}
 }
 
-func GetResponseWithMetricValue(rw http.ResponseWriter, metricValue string) {
-	// логика получения значения метрики и формирования ответа
-
+func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
 	rw.Write([]byte(metricValue))
 }
 
-func getMetricsList(rw http.ResponseWriter, r *http.Request) {
+func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
+	buildMetricsListResponse(&storage, rw)
+}
+
+func buildMetricsListResponse(storage MetricsStorage, rw http.ResponseWriter) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(http.StatusOK)
 
@@ -145,13 +156,13 @@ func getMetricsList(rw http.ResponseWriter, r *http.Request) {
 	io.WriteString(rw, "<h1>Metrics</h1>")
 
 	io.WriteString(rw, "<h2>Gauges</h2><ul>")
-	for name, value := range storage.gauges {
+	for name, value := range storage.GetAllGauges() {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %v</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
 
 	io.WriteString(rw, "<h2>Counters</h2><ul>")
-	for name, value := range storage.counters {
+	for name, value := range storage.GetAllCounters() {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %d</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
@@ -175,4 +186,12 @@ func (s *MemStorage) GetGauge(name string) (float64, bool) {
 func (s *MemStorage) GetCounter(name string) (int64, bool) {
 	v, ok := s.counters[name]
 	return v, ok
+}
+
+func (s *MemStorage) GetAllGauges() map[string]float64 {
+	return s.gauges
+}
+
+func (s *MemStorage) GetAllCounters() map[string]int64 {
+	return s.counters
 }
