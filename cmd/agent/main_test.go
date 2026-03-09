@@ -1,11 +1,14 @@
 package main
 
-import "testing"
+import (
+	models "go-yandex-practicum/internal/model"
+	"testing"
+)
 
 func TestReadMemStatMetrics_AllMetricsPresent(t *testing.T) {
-	metrics := make(map[string]gauge)
+	var metrics []models.Metrics
 
-	readMemStatMetrics(metrics)
+	metrics = fillMetrics()
 
 	expected := []string{
 		"Alloc",
@@ -36,11 +39,18 @@ func TestReadMemStatMetrics_AllMetricsPresent(t *testing.T) {
 		"Sys",
 		"TotalAlloc",
 		"RandomValue",
+		"PollCount",
+	}
+
+	found := make(map[string]bool)
+
+	for _, m := range metrics {
+		found[m.ID] = true
 	}
 
 	for _, name := range expected {
-		if _, ok := metrics[name]; !ok {
-			t.Errorf("metric %s not found in map", name)
+		if !found[name] {
+			t.Errorf("metric %s not found in slice", name)
 		}
 	}
 }
@@ -55,9 +65,9 @@ func TestBuildUpdateMetricURL(t *testing.T) {
 }
 
 func TestReadMemStatMetrics_MapIsNotEmpty(t *testing.T) {
-	metrics := make(map[string]gauge)
+	var metrics []models.Metrics
 
-	readMemStatMetrics(metrics)
+	metrics = fillMetrics()
 
 	if len(metrics) == 0 {
 		t.Fatal("metrics map is empty")

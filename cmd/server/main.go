@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"go-yandex-practicum/internal/config"
+	"go-yandex-practicum/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -87,7 +88,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	switch metricType {
-	case "counter":
+	case models.Counter:
 		val, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
@@ -95,7 +96,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 		addCounter(storage, metricName, val)
 
-	case "gauge":
+	case models.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
@@ -132,7 +133,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricName := chi.URLParam(r, metricNameRouteName)
 
 	switch metricType {
-	case "counter":
+	case models.Counter:
 		value, ok := getCounter(storage, metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
@@ -140,7 +141,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
-	case "gauge":
+	case models.Gauge:
 		value, ok := getGauge(storage, metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
