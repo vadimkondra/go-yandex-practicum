@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -36,8 +37,12 @@ func main() {
 		case <-reportTicker.C:
 			// отправляем метрики на сервер
 			if pollCount > 0 {
-				sendMetrics(client, metrics)
-				pollCount = 0
+				err := sendMetrics(client, metrics)
+				if err != nil {
+					log.Println("send metrics error:", err)
+				} else {
+					pollCount = 0
+				}
 			}
 		}
 	}
@@ -55,52 +60,58 @@ func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) 
 	return "update/" + metricType + "/" + metricNm + "/" + metricVal
 }
 
-func sendRequest(client *http.Client, url string) {
+func sendRequest(client *http.Client, url string) error {
 	req, err := http.NewRequest(http.MethodPost, url, nil)
-
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("create request: %w", err)
 	}
 
 	response, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("do request: %w", err)
 	}
 	defer response.Body.Close()
 
-	fmt.Println("url:", url)
-	fmt.Println("Status:", response.Status)
-}
-
-func sendMetrics(client *http.Client, metrics []models.Metrics) {
-	for _, metric := range metrics {
-		sendMetric(client, metric)
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
+
+	return nil
 }
 
-func sendMetric(client *http.Client, metric models.Metrics) {
+func sendMetrics(client *http.Client, metrics []models.Metrics) error {
+	for _, metric := range metrics {
+		if err := sendMetric(client, metric); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func sendMetric(client *http.Client, metric models.Metrics) error {
 	var metricValue string
 
 	switch metric.MType {
 	case models.Gauge:
 		if metric.Value == nil {
-			return
+			return fmt.Errorf("gauge metric %q has nil value", metric.ID)
 		}
 		metricValue = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 
 	case models.Counter:
 		if metric.Delta == nil {
-			return
+			return fmt.Errorf("counter metric %q has nil delta", metric.ID)
 		}
 		metricValue = strconv.FormatInt(*metric.Delta, 10)
 
 	default:
-		return
+		return fmt.Errorf("unknown metric type %q", metric.MType)
 	}
 
 	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL(metric.MType, metric.ID, metricValue)
 
-	sendRequest(client, url)
+	return sendRequest(client, url)
 }
 
 func fillMetrics() []models.Metrics {
