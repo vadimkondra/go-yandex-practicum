@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -44,9 +45,13 @@ var AppConfig config.ServerConfig
 
 func main() {
 	parseFlags()
+	log.Println("server address:", AppConfig.ServerAddress)
 
+	log.Println("before router")
 	r := ConfigServerRouter()
+	log.Println("after router")
 
+	log.Println("before listen")
 	if err := http.ListenAndServe(AppConfig.ServerAddress, r); err != nil {
 		panic(err)
 	}
