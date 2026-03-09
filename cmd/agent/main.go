@@ -24,8 +24,8 @@ func main() {
 
 	var metrics []models.Metrics
 
-	pollTicker := time.NewTicker(AppConfig.PollInterval)
-	reportTicker := time.NewTicker(AppConfig.ReportInterval)
+	pollTicker := time.NewTicker(time.Duration(AppConfig.PollInterval) * time.Second)
+	reportTicker := time.NewTicker(time.Duration(AppConfig.ReportInterval) * time.Second)
 
 	for {
 		select {
@@ -45,8 +45,8 @@ func main() {
 
 func parseFlags() {
 	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
-	flag.DurationVar(&AppConfig.PollInterval, "p", 2*time.Second, "polling interval for collecting metrics")
-	flag.DurationVar(&AppConfig.ReportInterval, "r", 10*time.Second, "reporting interval for sending metrics to server")
+	flag.IntVar(&AppConfig.PollInterval, "p", 2, "polling interval for collecting metrics")
+	flag.IntVar(&AppConfig.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
 
 	flag.Parse()
 }
