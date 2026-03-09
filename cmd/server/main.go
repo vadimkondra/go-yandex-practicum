@@ -53,7 +53,7 @@ func main() {
 }
 
 func parseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
+	flag.StringVar(&AppConfig.ServerAddress, "a", "http://localhost:8080", "address and port to run server")
 
 	// парсим переданные серверу аргументы в зарегистрированные переменные
 	flag.Parse()
