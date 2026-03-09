@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -52,8 +53,18 @@ func main() {
 	log.Println("after router")
 
 	log.Println("before listen")
-	if err := http.ListenAndServe(AppConfig.ServerAddress, r); err != nil {
-		panic(err)
+
+	_, port, err := net.SplitHostPort(AppConfig.ServerAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	addr := ":" + port
+
+	log.Println("listening on", addr)
+
+	if err := http.ListenAndServe(addr, r); err != nil {
+		log.Fatal(err)
 	}
 }
 
