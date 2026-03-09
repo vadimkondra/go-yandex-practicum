@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"time"
@@ -54,6 +55,26 @@ func parseFlags() {
 	flag.IntVar(&AppConfig.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
 
 	flag.Parse()
+
+	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
+		AppConfig.ServerAddress = envRunAddr
+	}
+	if envRunReportInterval := os.Getenv("REPORT_INTERVAL"); envRunReportInterval != "" {
+		value, err := strconv.Atoi(envRunReportInterval)
+		if err != nil {
+			log.Fatal("invalid REPORT_INTERVAL:", err)
+		}
+
+		AppConfig.ReportInterval = value
+	}
+	if envRunPoolInterval := os.Getenv("POLL_INTERVAL"); envRunPoolInterval != "" {
+		value, err := strconv.Atoi(envRunPoolInterval)
+		if err != nil {
+			log.Fatal("invalid POLL_INTERVAL:", err)
+		}
+
+		AppConfig.PollInterval = value
+	}
 }
 
 func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) string {

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 
 	"go-yandex-practicum/internal/config"
@@ -73,6 +74,10 @@ func parseFlags() {
 
 	// парсим переданные серверу аргументы в зарегистрированные переменные
 	flag.Parse()
+
+	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
+		AppConfig.ServerAddress = envRunAddr
+	}
 }
 
 func ConfigServerRouter() http.Handler {
