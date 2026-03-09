@@ -1,10 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+
+	"go-yandex-practicum/internal/config"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -36,12 +39,23 @@ var storage MetricsStorage = &MemStorage{
 	counters: make(map[string]int64),
 }
 
+var AppConfig config.ServerConfig
+
 func main() {
+	parseFlags()
+
 	r := ConfigServerRouter()
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	if err := http.ListenAndServe(AppConfig.ServerAddress, r); err != nil {
 		panic(err)
 	}
+}
+
+func parseFlags() {
+	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
+
+	// парсим переданные серверу аргументы в зарегистрированные переменные
+	flag.Parse()
 }
 
 func ConfigServerRouter() http.Handler {
