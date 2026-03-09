@@ -44,7 +44,7 @@ func main() {
 }
 
 func parseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "http://localhost:8080", "address and port to run server")
+	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
 	flag.DurationVar(&AppConfig.PollInterval, "p", 2*time.Second, "polling interval for collecting metrics")
 	flag.DurationVar(&AppConfig.ReportInterval, "r", 10*time.Second, "reporting interval for sending metrics to server")
 
@@ -98,7 +98,7 @@ func sendMetric(client *http.Client, metric models.Metrics) {
 		return
 	}
 
-	url := AppConfig.ServerAddress + "/" + buildUpdateMetricURL(metric.MType, metric.ID, metricValue)
+	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL(metric.MType, metric.ID, metricValue)
 
 	sendRequest(client, url)
 }
