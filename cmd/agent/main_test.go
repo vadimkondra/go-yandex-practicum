@@ -1,14 +1,11 @@
 package main
 
 import (
-	models "go-yandex-practicum/internal/model"
 	"testing"
 )
 
 func TestReadMemStatMetrics_AllMetricsPresent(t *testing.T) {
-	var metrics []models.Metrics
-
-	metrics = fillMetrics()
+	metrics := fillMetrics()
 
 	expected := []string{
 		"Alloc",
@@ -65,9 +62,7 @@ func TestBuildUpdateMetricURL(t *testing.T) {
 }
 
 func TestReadMemStatMetrics_MapIsNotEmpty(t *testing.T) {
-	var metrics []models.Metrics
-
-	metrics = fillMetrics()
+	metrics := fillMetrics()
 
 	if len(metrics) == 0 {
 		t.Fatal("metrics map is empty")
