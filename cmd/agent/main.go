@@ -86,7 +86,7 @@ func sendCounterMetric(client *http.Client, metricName string, metricValue count
 }
 
 func sendGaugeMetric(client *http.Client, metricName string, metricValue gauge) {
-	url := AppConfig.ServerAddress + "/" + buildUpdateMetricURL("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
+	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
 	sendRequest(client, url)
 }
 
