@@ -31,7 +31,7 @@ const (
 	metricValueRouteName = "metric-value"
 )
 
-var storage = MemStorage{
+var storage MetricsStorage = &MemStorage{
 	gauges:   make(map[string]float64),
 	counters: make(map[string]int64),
 }
@@ -79,7 +79,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		addCounter(&storage, metricName, val)
+		addCounter(storage, metricName, val)
 
 	case "gauge":
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -87,7 +87,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		setGauge(&storage, metricName, val)
+		setGauge(storage, metricName, val)
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
@@ -119,7 +119,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch metricType {
 	case "counter":
-		value, ok := getCounter(&storage, metricName)
+		value, ok := getCounter(storage, metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -127,7 +127,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case "gauge":
-		value, ok := getGauge(&storage, metricName)
+		value, ok := getGauge(storage, metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -145,7 +145,7 @@ func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
 }
 
 func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
-	buildMetricsListResponse(&storage, rw)
+	buildMetricsListResponse(storage, rw)
 }
 
 func buildMetricsListResponse(storage MetricsStorage, rw http.ResponseWriter) {
