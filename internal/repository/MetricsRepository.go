@@ -1,0 +1,59 @@
+package repository
+
+type MemStorage struct {
+	gauges   map[string]float64
+	counters map[string]int64
+}
+
+type MetricsStorage interface {
+	SetGauge(name string, value float64)
+	AddCounter(name string, value int64)
+
+	GetGauge(name string) (float64, bool)
+	GetCounter(name string) (int64, bool)
+
+	GetAllGauges() map[string]float64
+	GetAllCounters() map[string]int64
+}
+
+func setGauge(storage MetricsStorage, metricName string, metricValue float64) {
+	storage.SetGauge(metricName, metricValue)
+}
+
+func addCounter(storage MetricsStorage, metricName string, metricValue int64) {
+	storage.AddCounter(metricName, metricValue)
+}
+
+func getGauge(storage MetricsStorage, metricName string) (float64, bool) {
+	return storage.GetGauge(metricName)
+}
+
+func getCounter(storage MetricsStorage, metricName string) (int64, bool) {
+	return storage.GetCounter(metricName)
+}
+
+func (s *MemStorage) SetGauge(name string, value float64) {
+	s.gauges[name] = value
+}
+
+func (s *MemStorage) AddCounter(name string, value int64) {
+	s.counters[name] += value
+}
+
+func (s *MemStorage) GetGauge(name string) (float64, bool) {
+	v, ok := s.gauges[name]
+	return v, ok
+}
+
+func (s *MemStorage) GetCounter(name string) (int64, bool) {
+	v, ok := s.counters[name]
+	return v, ok
+}
+
+func (s *MemStorage) GetAllGauges() map[string]float64 {
+	return s.gauges
+}
+
+func (s *MemStorage) GetAllCounters() map[string]int64 {
+	return s.counters
+}
