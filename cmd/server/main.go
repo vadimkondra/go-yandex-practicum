@@ -26,7 +26,7 @@ const (
 	metricValueRouteName = "metric-value"
 )
 
-var storage repository.MetricsStorage = &repository.MemStorage{}
+var storage repository.MetricsStorage = repository.NewMemStorage()
 
 func ConfigServerRouter() http.Handler {
 	r := chi.NewRouter()

@@ -16,6 +16,13 @@ type MetricsStorage interface {
 	GetAllCounters() map[string]int64
 }
 
+func NewMemStorage() *MemStorage {
+	return &MemStorage{
+		gauges:   make(map[string]float64),
+		counters: make(map[string]int64),
+	}
+}
+
 func setGauge(storage MetricsStorage, metricName string, metricValue float64) {
 	storage.SetGauge(metricName, metricValue)
 }
