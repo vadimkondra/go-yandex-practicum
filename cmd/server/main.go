@@ -266,7 +266,8 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.ID == "" {
-		http.Error(rw, "metric name required", http.StatusBadRequest)
+		rw.Header().Set("Content-Type", "application/json")
+		http.Error(rw, "metric name required", http.StatusNotFound)
 		return
 	}
 
@@ -276,7 +277,8 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	case models.Counter:
 		value, ok := storage.GetCounter(req.ID)
 		if !ok {
-			http.Error(rw, "unknown metric name", http.StatusBadRequest)
+			rw.Header().Set("Content-Type", "application/json")
+			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
 		}
 
@@ -288,6 +290,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	case models.Gauge:
 		value, ok := storage.GetGauge(req.ID)
 		if !ok {
+			rw.Header().Set("Content-Type", "application/json")
 			http.Error(rw, "unknown metric name", http.StatusBadRequest)
 			return
 		}
