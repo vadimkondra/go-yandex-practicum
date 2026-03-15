@@ -103,7 +103,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			statusCode:     http.StatusOK,
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(lw, r)
 
 		duration := time.Since(start)
 
