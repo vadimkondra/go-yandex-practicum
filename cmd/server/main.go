@@ -78,6 +78,7 @@ func ConfigServerRouter() http.Handler {
 
 	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
 	r.Post("/value/", getMetricValueJSONHandler)
+
 	r.Post("/update", metricJSONHandler)
 
 	r.Route("/update", func(r chi.Router) {
@@ -262,9 +263,33 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeMetricValueResponse(rw, strconv.FormatFloat(value, 'f', -1, 64))
+		writeMetricJSONValueResponse(rw, req.MType, req.ID, value)
 	default:
 		http.Error(rw, "unknown metric type", http.StatusNotFound)
+		return
+	}
+}
+
+func writeMetricJSONValueResponse(rw http.ResponseWriter, metricType string, metricName string, metricValue float64) {
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+
+	var resp = models.Metrics{
+		ID:    metricName,
+		MType: metricType,
+	}
+
+	switch metricType {
+	case models.Counter:
+		v := int64(metricValue)
+		resp.Delta = &v
+	case models.Gauge:
+		v := metricValue
+		resp.Value = &v
+	}
+
+	err := json.NewEncoder(rw).Encode(resp)
+	if err != nil {
 		return
 	}
 }
