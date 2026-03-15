@@ -1,18 +1,16 @@
 package main
 
 import (
-	models "go-yandex-practicum/internal/model"
-
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 
+	"go-yandex-practicum/internal/model"
+	"go-yandex-practicum/internal/repository"
+
 	"github.com/go-chi/chi/v5"
 )
-
-"io"
-
 
 func main() {
 	r := ConfigServerRouter()
@@ -21,6 +19,14 @@ func main() {
 		panic(err)
 	}
 }
+
+const (
+	metricTypeRouteName  = "metric-type"
+	metricNameRouteName  = "metric-name"
+	metricValueRouteName = "metric-value"
+)
+
+var storage repository.MetricsStorage = &repository.MemStorage{}
 
 func ConfigServerRouter() http.Handler {
 	r := chi.NewRouter()
@@ -52,12 +58,12 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch metricType {
 	case models.Counter:
-		_, err := strconv.ParseInt(metricValue, 10, 64)
+		val, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		addCounter(storage, metricName, val)
+		storage.AddCounter(metricName, val)
 
 	case models.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -65,7 +71,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		setGauge(storage, metricName, val)
+		storage.SetGauge(metricName, val)
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
@@ -75,29 +81,13 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
-func setGauge(storage MetricsStorage, metricName string, metricValue float64) {
-	storage.SetGauge(metricName, metricValue)
-}
-
-func addCounter(storage MetricsStorage, metricName string, metricValue int64) {
-	storage.AddCounter(metricName, metricValue)
-}
-
-func getGauge(storage MetricsStorage, metricName string) (float64, bool) {
-	return storage.GetGauge(metricName)
-}
-
-func getCounter(storage MetricsStorage, metricName string) (int64, bool) {
-	return storage.GetCounter(metricName)
-}
-
 func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, metricTypeRouteName)
 	metricName := chi.URLParam(r, metricNameRouteName)
 
 	switch metricType {
 	case "counter":
-		value, ok := getCounter(storage, metricName)
+		value, ok := storage.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -105,7 +95,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case "gauge":
-		value, ok := getGauge(storage, metricName)
+		value, ok := storage.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -126,7 +116,7 @@ func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
 	buildMetricsListResponse(storage, rw)
 }
 
-func buildMetricsListResponse(storage MetricsStorage, rw http.ResponseWriter) {
+func buildMetricsListResponse(storage repository.MetricsStorage, rw http.ResponseWriter) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(http.StatusOK)
 
@@ -146,30 +136,4 @@ func buildMetricsListResponse(storage MetricsStorage, rw http.ResponseWriter) {
 	io.WriteString(rw, "</ul>")
 
 	io.WriteString(rw, "</body></html>")
-}
-
-func (s *MemStorage) SetGauge(name string, value float64) {
-	s.gauges[name] = value
-}
-
-func (s *MemStorage) AddCounter(name string, value int64) {
-	s.counters[name] += value
-}
-
-func (s *MemStorage) GetGauge(name string) (float64, bool) {
-	v, ok := s.gauges[name]
-	return v, ok
-}
-
-func (s *MemStorage) GetCounter(name string) (int64, bool) {
-	v, ok := s.counters[name]
-	return v, ok
-}
-
-func (s *MemStorage) GetAllGauges() map[string]float64 {
-	return s.gauges
-}
-
-func (s *MemStorage) GetAllCounters() map[string]int64 {
-	return s.counters
 }
