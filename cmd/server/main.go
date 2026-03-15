@@ -270,7 +270,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := models.Metrics{}
+	var resp models.Metrics
 
 	switch req.MType {
 	case models.Counter:
