@@ -149,13 +149,18 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "delta required", http.StatusBadRequest)
 			return
 		}
-		storage.AddCounter(m.ID, *m.Delta)
+		var val = storage.AddCounter(m.ID, *m.Delta)
+
+		writeMetricJSONValueResponse(rw, m.MType, m.ID, float64(val))
+
 	case models.Gauge:
 		if m.Value == nil {
 			http.Error(rw, "value required", http.StatusBadRequest)
 			return
 		}
 		storage.SetGauge(m.ID, *m.Value)
+
+		writeMetricJSONValueResponse(rw, m.MType, m.ID, *m.Value)
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
 		return
