@@ -12,9 +12,9 @@ func setupRouter() http.Handler {
 	r := chi.NewRouter()
 
 	r.Route("/update", func(r chi.Router) {
-		r.Route("/metric-type", func(r chi.Router) {
-			r.Route("/metric-name", func(r chi.Router) {
-				r.Post("/metric-value", metricHandler)
+		r.Route("/{metric-type}", func(r chi.Router) {
+			r.Route("/{metric-name}", func(r chi.Router) {
+				r.Post("/{metric-value}", metricHandler)
 			})
 		})
 	})
