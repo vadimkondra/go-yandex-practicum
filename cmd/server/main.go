@@ -71,7 +71,7 @@ func ConfigServerRouter() http.Handler {
 	r.Get("/", getMetricsListHandler)
 
 	r.Route("/value", func(r chi.Router) {
-		r.Post("/value", getMetricValueJSONHandler)
+		r.Post("/", getMetricValueJSONHandler)
 		r.Route("/{metric-type}", func(r chi.Router) {
 			r.Route("/{metric-name}", func(r chi.Router) {
 				r.Get("/", getMetricValueHandler)
