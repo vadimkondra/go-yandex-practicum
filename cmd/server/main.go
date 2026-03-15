@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go-yandex-practicum/internal/config"
@@ -76,6 +77,8 @@ func ConfigServerRouter() http.Handler {
 	r.Get("/", getMetricsListHandler)
 
 	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
+	r.Post("/value/", getMetricValueJsonHandler)
+	r.Post("/update", metricJsonHandler)
 
 	r.Route("/update", func(r chi.Router) {
 		r.Route("/{"+metricTypeRouteName+"}", func(r chi.Router) {
@@ -116,6 +119,48 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			"size", lw.size,
 		)
 	})
+}
+
+func metricJsonHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(rw, "invalid Content-Type", http.StatusBadRequest)
+		return
+	}
+
+	var m models.Metrics
+
+	err := json.NewDecoder(r.Body).Decode(&m)
+	if err != nil {
+		http.Error(rw, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if m.ID == "" {
+		http.Error(rw, "metric name required", http.StatusBadRequest)
+		return
+	}
+
+	switch m.MType {
+	case models.Counter:
+		if m.Delta == nil {
+			http.Error(rw, "delta required", http.StatusBadRequest)
+			return
+		}
+		storage.AddCounter(m.ID, *m.Delta)
+	case models.Gauge:
+		if m.Value == nil {
+			http.Error(rw, "value required", http.StatusBadRequest)
+			return
+		}
+		storage.SetGauge(m.ID, *m.Value)
+	default:
+		http.Error(rw, "unknown metric type", http.StatusBadRequest)
+		return
+	}
+
+	rw.WriteHeader(http.StatusOK)
 }
 
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
@@ -180,7 +225,52 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getMetricValueJsonHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(rw, "invalid Content-Type", http.StatusBadRequest)
+		return
+	}
+
+	var req models.Request
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(rw, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.ID == "" {
+		http.Error(rw, "metric name required", http.StatusBadRequest)
+		return
+	}
+
+	switch req.MType {
+	case models.Counter:
+		value, ok := storage.GetCounter(req.ID)
+		if !ok {
+			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			return
+		}
+
+		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
+	case models.Gauge:
+		value, ok := storage.GetGauge(req.ID)
+		if !ok {
+			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			return
+		}
+
+		writeMetricValueResponse(rw, strconv.FormatFloat(value, 'f', -1, 64))
+	default:
+		http.Error(rw, "unknown metric type", http.StatusNotFound)
+		return
+	}
+}
+
 func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
+	rw.Header().Set("Content-Type", "application/json")
 	rw.Write([]byte(metricValue))
 }
 
