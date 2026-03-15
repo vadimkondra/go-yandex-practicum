@@ -276,7 +276,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	case models.Counter:
 		value, ok := storage.GetCounter(req.ID)
 		if !ok {
-			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			http.Error(rw, "unknown metric name", http.StatusBadRequest)
 			return
 		}
 
@@ -288,7 +288,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	case models.Gauge:
 		value, ok := storage.GetGauge(req.ID)
 		if !ok {
-			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			http.Error(rw, "unknown metric name", http.StatusBadRequest)
 			return
 		}
 
@@ -298,7 +298,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Value: &value,
 		}
 	default:
-		http.Error(rw, "unknown metric type", http.StatusNotFound)
+		http.Error(rw, "unknown metric type", http.StatusBadRequest)
 		return
 	}
 
