@@ -249,11 +249,16 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func errorResponse(rw http.ResponseWriter, status int, msg string) {
+	rw.Header().Set("Content-Type", "application/json")
+	http.Error(rw, msg, status)
+}
+
 func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(rw, "invalid Content-Type", http.StatusNotFound)
+		errorResponse(rw, http.StatusNotFound, "invalid Content-Type")
 		return
 	}
 
@@ -261,13 +266,12 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		http.Error(rw, "invalid JSON", http.StatusNotFound)
+		errorResponse(rw, http.StatusNotFound, "invalid JSON")
 		return
 	}
 
 	if req.ID == "" {
-		rw.Header().Set("Content-Type", "application/json")
-		http.Error(rw, "metric name required", http.StatusNotFound)
+		errorResponse(rw, http.StatusNotFound, "metric name required")
 		return
 	}
 
@@ -277,8 +281,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	case models.Counter:
 		value, ok := storage.GetCounter(req.ID)
 		if !ok {
-			rw.Header().Set("Content-Type", "application/json")
-			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
 		}
 
@@ -290,8 +293,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	case models.Gauge:
 		value, ok := storage.GetGauge(req.ID)
 		if !ok {
-			rw.Header().Set("Content-Type", "application/json")
-			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
 		}
 
@@ -301,13 +303,13 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Value: &value,
 		}
 	default:
-		http.Error(rw, "unknown metric type", http.StatusNotFound)
+		errorResponse(rw, http.StatusNotFound, "unknown metric type")
 		return
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(rw).Encode(resp); err != nil {
-		http.Error(rw, "encode response error", http.StatusInternalServerError)
+		errorResponse(rw, http.StatusInternalServerError, "encode response error")
 		return
 	}
 }
