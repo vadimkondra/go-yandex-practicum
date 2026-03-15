@@ -1,10 +1,11 @@
 package main
 
 import (
-	models "go-yandex-practicum/internal/model"
 	"io"
 	"net/http"
 	"strconv"
+
+	"go-yandex-practicum/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
