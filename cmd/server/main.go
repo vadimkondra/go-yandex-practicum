@@ -77,8 +77,8 @@ func ConfigServerRouter() http.Handler {
 	r.Get("/", getMetricsListHandler)
 
 	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
-	r.Post("/value/", getMetricValueJsonHandler)
-	r.Post("/update", metricJsonHandler)
+	r.Post("/value/", getMetricValueJSONHandler)
+	r.Post("/update", metricJSONHandler)
 
 	r.Route("/update", func(r chi.Router) {
 		r.Route("/{"+metricTypeRouteName+"}", func(r chi.Router) {
@@ -121,7 +121,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func metricJsonHandler(rw http.ResponseWriter, r *http.Request) {
+func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -225,7 +225,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getMetricValueJsonHandler(rw http.ResponseWriter, r *http.Request) {
+func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
