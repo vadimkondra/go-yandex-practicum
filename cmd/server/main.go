@@ -253,7 +253,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(rw, "invalid Content-Type", http.StatusBadRequest)
+		http.Error(rw, "invalid Content-Type", http.StatusNotFound)
 		return
 	}
 
@@ -261,7 +261,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		http.Error(rw, "invalid JSON", http.StatusBadRequest)
+		http.Error(rw, "invalid JSON", http.StatusNotFound)
 		return
 	}
 
@@ -291,7 +291,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		value, ok := storage.GetGauge(req.ID)
 		if !ok {
 			rw.Header().Set("Content-Type", "application/json")
-			http.Error(rw, "unknown metric name", http.StatusBadRequest)
+			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
 		}
 
@@ -301,7 +301,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Value: &value,
 		}
 	default:
-		http.Error(rw, "unknown metric type", http.StatusBadRequest)
+		http.Error(rw, "unknown metric type", http.StatusNotFound)
 		return
 	}
 
