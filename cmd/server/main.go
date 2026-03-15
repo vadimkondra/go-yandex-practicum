@@ -255,7 +255,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
+		writeMetricJSONValueResponse(rw, req.MType, req.ID, float64(value))
 	case models.Gauge:
 		value, ok := storage.GetGauge(req.ID)
 		if !ok {
