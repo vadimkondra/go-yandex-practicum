@@ -40,12 +40,6 @@ func main() {
 var AppConfig config.ServerConfig
 var sugar zap.SugaredLogger
 
-const (
-	metricTypeRouteName  = "metric-type"
-	metricNameRouteName  = "metric-name"
-	metricValueRouteName = "metric-value"
-)
-
 var storage repository.MetricsStorage = repository.NewMemStorage()
 
 func parseFlags() {
@@ -76,15 +70,16 @@ func ConfigServerRouter() http.Handler {
 
 	r.Get("/", getMetricsListHandler)
 
-	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
+	r.Get("/value/metric-type/metric-name", getMetricValueHandler)
 	r.Post("/value/", getMetricValueJSONHandler)
 
+	r.Post("/update/", metricJSONHandler)
 	r.Post("/update", metricJSONHandler)
 
 	r.Route("/update", func(r chi.Router) {
-		r.Route("/{"+metricTypeRouteName+"}", func(r chi.Router) {
-			r.Route("/{"+metricNameRouteName+"}", func(r chi.Router) {
-				r.Post("/{"+metricValueRouteName+"}", metricHandler)
+		r.Route("/metric-type", func(r chi.Router) {
+			r.Route("/metric-name", func(r chi.Router) {
+				r.Post("/metric-value", metricHandler)
 			})
 		})
 	})
@@ -170,9 +165,9 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, metricTypeRouteName)
-	metricName := chi.URLParam(r, metricNameRouteName)
-	metricValue := chi.URLParam(r, metricValueRouteName)
+	metricType := chi.URLParam(r, "metric-type")
+	metricName := chi.URLParam(r, "metric-name")
+	metricValue := chi.URLParam(r, "metric-value")
 
 	if metricName == "" {
 		http.Error(rw, "metric name required", http.StatusNotFound)
@@ -205,8 +200,8 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, metricTypeRouteName)
-	metricName := chi.URLParam(r, metricNameRouteName)
+	metricType := chi.URLParam(r, "metric-type")
+	metricName := chi.URLParam(r, "metric-name")
 
 	switch metricType {
 	case models.Counter:
