@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/repository"
-	"go-yandex-practicum/internal/config"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -33,7 +33,6 @@ const (
 )
 
 var storage repository.MetricsStorage = repository.NewMemStorage()
-
 
 func parseFlags() {
 	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
@@ -100,7 +99,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricName := chi.URLParam(r, metricNameRouteName)
 
 	switch metricType {
-	case "counter":
+	case models.Counter:
 		value, ok := storage.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
@@ -108,7 +107,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
-	case "gauge":
+	case models.Gauge:
 		value, ok := storage.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
