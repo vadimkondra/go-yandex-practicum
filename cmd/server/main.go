@@ -3,29 +3,26 @@ package main
 import (
 	"flag"
 	"fmt"
+	"go-yandex-practicum/internal/config"
+	"go-yandex-practicum/internal/model"
+	"go-yandex-practicum/internal/repository"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
-	"go-yandex-practicum/internal/config"
-	"go-yandex-practicum/internal/model"
-	"go-yandex-practicum/internal/repository"
+	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
 	parseFlags()
-	log.Println("server address:", AppConfig.ServerAddress)
 
-	log.Println("before router")
 	r := ConfigServerRouter()
-	log.Println("after router")
-
-	log.Println("before listen")
 
 	_, port, err := net.SplitHostPort(AppConfig.ServerAddress)
 	if err != nil {
@@ -34,14 +31,13 @@ func main() {
 
 	addr := ":" + port
 
-	log.Println("listening on", addr)
-
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatal(err)
 	}
 }
 
 var AppConfig config.ServerConfig
+var sugar zap.SugaredLogger
 
 const (
 	metricTypeRouteName  = "metric-type"
@@ -63,7 +59,19 @@ func parseFlags() {
 }
 
 func ConfigServerRouter() http.Handler {
+
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		// вызываем панику, если ошибка
+		panic(err)
+	}
+	defer logger.Sync()
+
+	// делаем регистратор SugaredLogger
+	sugar = *logger.Sugar()
+
 	r := chi.NewRouter()
+	r.Use(LoggingMiddleware)
 
 	r.Get("/", getMetricsListHandler)
 
@@ -78,6 +86,36 @@ func ConfigServerRouter() http.Handler {
 	})
 
 	return r
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	size       int
+}
+
+func LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		lw := &loggingResponseWriter{
+			ResponseWriter: w,
+			statusCode:     http.StatusOK,
+		}
+
+		next.ServeHTTP(w, r)
+
+		duration := time.Since(start)
+
+		sugar.Infow(
+			"request completed",
+			"uri", r.RequestURI,
+			"method", r.Method,
+			"duration", duration,
+			"status", lw.statusCode,
+			"size", lw.size,
+		)
+	})
 }
 
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
