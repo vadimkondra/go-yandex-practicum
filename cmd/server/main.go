@@ -148,9 +148,18 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "delta required", http.StatusBadRequest)
 			return
 		}
-		var val = storage.AddCounter(m.ID, *m.Delta)
+		val := storage.AddCounter(m.ID, *m.Delta)
 
-		writeMetricJSONValueResponse(rw, m.MType, m.ID, float64(val))
+		resp := models.Metrics{
+			ID:    m.ID,
+			MType: models.Counter,
+			Delta: &val,
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			http.Error(rw, "encode response error", http.StatusInternalServerError)
+			return
+		}
 
 	case models.Gauge:
 		if m.Value == nil {
@@ -159,7 +168,17 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 		storage.SetGauge(m.ID, *m.Value)
 
-		writeMetricJSONValueResponse(rw, m.MType, m.ID, *m.Value)
+		resp := models.Metrics{
+			ID:    m.ID,
+			MType: models.Gauge,
+			Value: m.Value,
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			http.Error(rw, "encode response error", http.StatusInternalServerError)
+			return
+		}
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
 		return
@@ -251,6 +270,8 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := models.Metrics{}
+
 	switch req.MType {
 	case models.Counter:
 		value, ok := storage.GetCounter(req.ID)
@@ -259,7 +280,11 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeMetricJSONValueResponse(rw, req.MType, req.ID, float64(value))
+		resp = models.Metrics{
+			ID:    req.ID,
+			MType: req.MType,
+			Delta: &value,
+		}
 	case models.Gauge:
 		value, ok := storage.GetGauge(req.ID)
 		if !ok {
@@ -267,9 +292,19 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeMetricJSONValueResponse(rw, req.MType, req.ID, value)
+		resp = models.Metrics{
+			ID:    req.ID,
+			MType: req.MType,
+			Value: &value,
+		}
 	default:
 		http.Error(rw, "unknown metric type", http.StatusNotFound)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(rw).Encode(resp); err != nil {
+		http.Error(rw, "encode response error", http.StatusInternalServerError)
 		return
 	}
 }
