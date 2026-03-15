@@ -1,6 +1,8 @@
 package main
 
 import (
+	models "go-yandex-practicum/internal/model"
+
 	"fmt"
 	"io"
 	"net/http"
@@ -9,32 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type MemStorage struct {
-	gauges   map[string]float64
-	counters map[string]int64
-}
+"io"
 
-type MetricsStorage interface {
-	SetGauge(name string, value float64)
-	AddCounter(name string, value int64)
-
-	GetGauge(name string) (float64, bool)
-	GetCounter(name string) (int64, bool)
-
-	GetAllGauges() map[string]float64
-	GetAllCounters() map[string]int64
-}
-
-const (
-	metricTypeRouteName  = "metric-type"
-	metricNameRouteName  = "metric-name"
-	metricValueRouteName = "metric-value"
-)
-
-var storage MetricsStorage = &MemStorage{
-	gauges:   make(map[string]float64),
-	counters: make(map[string]int64),
-}
 
 func main() {
 	r := ConfigServerRouter()
@@ -73,15 +51,15 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	switch metricType {
-	case "counter":
-		val, err := strconv.ParseInt(metricValue, 10, 64)
+	case models.Counter:
+		_, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
 		addCounter(storage, metricName, val)
 
-	case "gauge":
+	case models.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
