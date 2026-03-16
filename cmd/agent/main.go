@@ -1,30 +1,30 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"runtime"
 	"strconv"
 	"time"
+
+	"go-yandex-practicum/internal/config"
 )
 
-const (
-	serverHost        = "http://localhost:8080"
-	pollIntervalSec   = 2
-	reportIntervalSec = 10
-)
+var AppConfig config.AgentConfig
 
 type gauge float64
 type counter int64
 
 func main() {
+	parseFlags()
 
 	client := &http.Client{}
 	metricsMap := make(map[string]gauge)
 
-	pollTicker := time.NewTicker(pollIntervalSec * time.Second)
-	reportTicker := time.NewTicker(reportIntervalSec * time.Second)
+	pollTicker := time.NewTicker(time.Duration(AppConfig.PollInterval) * time.Second)
+	reportTicker := time.NewTicker(time.Duration(AppConfig.ReportInterval) * time.Second)
 	var pollCount counter = 0
 
 	for {
@@ -43,6 +43,14 @@ func main() {
 			}
 		}
 	}
+}
+
+func parseFlags() {
+	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
+	flag.IntVar(&AppConfig.PollInterval, "p", 2, "polling interval for collecting metrics")
+	flag.IntVar(&AppConfig.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
+
+	flag.Parse()
 }
 
 func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) string {
@@ -73,12 +81,12 @@ func sendGaugeMetrics(client *http.Client, metrics map[string]gauge) {
 }
 
 func sendCounterMetric(client *http.Client, metricName string, metricValue counter) {
-	url := serverHost + "/" + buildUpdateMetricURL("counter", metricName, strconv.Itoa(int(metricValue)))
+	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL("counter", metricName, strconv.Itoa(int(metricValue)))
 	sendRequest(client, url)
 }
 
 func sendGaugeMetric(client *http.Client, metricName string, metricValue gauge) {
-	url := serverHost + "/" + buildUpdateMetricURL("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
+	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL("gauge", metricName, strconv.FormatFloat(float64(metricValue), 'f', -1, 64))
 	sendRequest(client, url)
 }
 

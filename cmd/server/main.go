@@ -1,11 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 
+	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/repository"
 
@@ -13,12 +15,16 @@ import (
 )
 
 func main() {
+	parseFlags()
+
 	r := ConfigServerRouter()
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	if err := http.ListenAndServe(AppConfig.ServerAddress, r); err != nil {
 		panic(err)
 	}
 }
+
+var AppConfig config.ServerConfig
 
 const (
 	metricTypeRouteName  = "metric-type"
@@ -27,6 +33,13 @@ const (
 )
 
 var storage repository.MetricsStorage = repository.NewMemStorage()
+
+func parseFlags() {
+	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
+
+	// парсим переданные серверу аргументы в зарегистрированные переменные
+	flag.Parse()
+}
 
 func ConfigServerRouter() http.Handler {
 	r := chi.NewRouter()
@@ -86,7 +99,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricName := chi.URLParam(r, metricNameRouteName)
 
 	switch metricType {
-	case "counter":
+	case models.Counter:
 		value, ok := storage.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
@@ -94,7 +107,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
-	case "gauge":
+	case models.Gauge:
 		value, ok := storage.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
