@@ -36,9 +36,11 @@ func main() {
 
 		case <-reportTicker.C:
 			// отправляем метрики на сервер
-			sendGaugeMetrics(client, metricsMap)
-
-			sendCounterMetric(client, "PollCount", pollCount)
+			if pollCount > 0 {
+				sendGaugeMetrics(client, metricsMap)
+				sendCounterMetric(client, "PollCount", pollCount)
+				pollCount = 0
+			}
 		}
 	}
 }

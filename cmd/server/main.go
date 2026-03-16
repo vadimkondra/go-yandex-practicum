@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
 	"go-yandex-practicum/internal/model"
+	"go-yandex-practicum/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -12,16 +15,30 @@ import (
 func main() {
 	r := ConfigServerRouter()
 
-	http.ListenAndServe(":8080", r)
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		panic(err)
+	}
 }
+
+const (
+	metricTypeRouteName  = "metric-type"
+	metricNameRouteName  = "metric-name"
+	metricValueRouteName = "metric-value"
+)
+
+var storage repository.MetricsStorage = repository.NewMemStorage()
 
 func ConfigServerRouter() http.Handler {
 	r := chi.NewRouter()
 
+	r.Get("/", getMetricsListHandler)
+
+	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
+
 	r.Route("/update", func(r chi.Router) {
-		r.Route("/{metric-type}", func(r chi.Router) {
-			r.Route("/{metric-name}", func(r chi.Router) {
-				r.Post("/{metric-value}", metricHandler)
+		r.Route("/{"+metricTypeRouteName+"}", func(r chi.Router) {
+			r.Route("/{"+metricNameRouteName+"}", func(r chi.Router) {
+				r.Post("/{"+metricValueRouteName+"}", metricHandler)
 			})
 		})
 	})
@@ -30,10 +47,9 @@ func ConfigServerRouter() http.Handler {
 }
 
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
-	// тут работа с метрикой
-	metricType := chi.URLParam(r, "metric-type")
-	metricName := chi.URLParam(r, "metric-name")
-	metricValue := chi.URLParam(r, "metric-value")
+	metricType := chi.URLParam(r, metricTypeRouteName)
+	metricName := chi.URLParam(r, metricNameRouteName)
+	metricValue := chi.URLParam(r, metricValueRouteName)
 
 	if metricName == "" {
 		http.Error(rw, "metric name required", http.StatusNotFound)
@@ -42,11 +58,12 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch metricType {
 	case models.Counter:
-		_, err := strconv.ParseInt(metricValue, 10, 64)
+		val, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
+		storage.AddCounter(metricName, val)
 
 	case models.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -54,14 +71,69 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		handleGauge(metricName, val)
+		storage.SetGauge(metricName, val)
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
 		return
 	}
+
+	rw.WriteHeader(http.StatusOK)
 }
 
-func handleGauge(metricName string, metricValue float64) {
-	// здесь логика обработки gauge метрики
+func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
+	metricType := chi.URLParam(r, metricTypeRouteName)
+	metricName := chi.URLParam(r, metricNameRouteName)
+
+	switch metricType {
+	case "counter":
+		value, ok := storage.GetCounter(metricName)
+		if !ok {
+			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			return
+		}
+
+		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
+	case "gauge":
+		value, ok := storage.GetGauge(metricName)
+		if !ok {
+			http.Error(rw, "unknown metric name", http.StatusNotFound)
+			return
+		}
+
+		writeMetricValueResponse(rw, strconv.FormatFloat(value, 'f', -1, 64))
+	default:
+		http.Error(rw, "unknown metric type", http.StatusNotFound)
+		return
+	}
+}
+
+func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
+	rw.Write([]byte(metricValue))
+}
+
+func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
+	buildMetricsListResponse(storage, rw)
+}
+
+func buildMetricsListResponse(storage repository.MetricsStorage, rw http.ResponseWriter) {
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	rw.WriteHeader(http.StatusOK)
+
+	io.WriteString(rw, "<html><body>")
+	io.WriteString(rw, "<h1>Metrics</h1>")
+
+	io.WriteString(rw, "<h2>Gauges</h2><ul>")
+	for name, value := range storage.GetAllGauges() {
+		io.WriteString(rw, fmt.Sprintf("<li>%s: %v</li>", name, value))
+	}
+	io.WriteString(rw, "</ul>")
+
+	io.WriteString(rw, "<h2>Counters</h2><ul>")
+	for name, value := range storage.GetAllCounters() {
+		io.WriteString(rw, fmt.Sprintf("<li>%s: %d</li>", name, value))
+	}
+	io.WriteString(rw, "</ul>")
+
+	io.WriteString(rw, "</body></html>")
 }
