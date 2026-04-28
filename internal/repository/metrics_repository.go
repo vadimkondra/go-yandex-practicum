@@ -23,22 +23,6 @@ func NewMemStorage() *MemStorage {
 	}
 }
 
-func setGauge(storage MetricsStorage, metricName string, metricValue float64) {
-	storage.SetGauge(metricName, metricValue)
-}
-
-func addCounter(storage MetricsStorage, metricName string, metricValue int64) {
-	storage.AddCounter(metricName, metricValue)
-}
-
-func getGauge(storage MetricsStorage, metricName string) (float64, bool) {
-	return storage.GetGauge(metricName)
-}
-
-func getCounter(storage MetricsStorage, metricName string) (int64, bool) {
-	return storage.GetCounter(metricName)
-}
-
 func (s *MemStorage) SetGauge(name string, value float64) {
 	s.gauges[name] = value
 }

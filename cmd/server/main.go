@@ -2,17 +2,16 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/service"
+	"go-yandex-practicum/internal/store"
 	"io"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -21,7 +20,7 @@ import (
 var AppConfig config.ServerConfig
 
 func main() {
-	parseFlags()
+	ParseFlags()
 
 	if AppConfig.Restore {
 		err := service.LoadMetricsFromFile(AppConfig.FileStorePath)
@@ -32,6 +31,11 @@ func main() {
 
 	if AppConfig.StoreInterval > 0 {
 		go service.StoreMetrics(AppConfig.StoreInterval, AppConfig.FileStorePath)
+	}
+
+	if AppConfig.DatabaseDsn != "" {
+		store.InitDb(AppConfig.DatabaseDsn)
+		defer store.CloseDb()
 	}
 
 	r := ConfigServerRouter()
@@ -48,39 +52,6 @@ func main() {
 	}
 }
 
-func parseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
-	flag.IntVar(&AppConfig.StoreInterval, "i", 300, "interval in seconds between metrics store")
-	flag.StringVar(&AppConfig.FileStorePath, "f", "./metric-data", "path to store data")
-	flag.BoolVar(&AppConfig.Restore, "r", false, "restore metric data")
-
-	flag.Parse()
-
-	if storeInterval := os.Getenv("STORE_INTERVAL"); storeInterval != "" {
-		parsedStoreInterval, err := strconv.Atoi(storeInterval)
-
-		if err == nil {
-			AppConfig.StoreInterval = parsedStoreInterval
-		}
-	}
-
-	if filePath := os.Getenv("FILE_STORAGE_PATH"); filePath != "" {
-		AppConfig.FileStorePath = filePath
-	}
-
-	if restore := os.Getenv("RESTORE"); restore != "" {
-		parsedRestore, err := strconv.ParseBool(restore)
-
-		if err == nil {
-			AppConfig.Restore = parsedRestore
-		}
-	}
-
-	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-		AppConfig.ServerAddress = envRunAddr
-	}
-}
-
 func ConfigServerRouter() http.Handler {
 
 	r := chi.NewRouter()
@@ -88,6 +59,8 @@ func ConfigServerRouter() http.Handler {
 	r.Use(middleware.GzipMiddleware)
 
 	r.Get("/", getMetricsListHandler)
+
+	r.Get("/ping", pingHandler)
 
 	r.Route("/value", func(r chi.Router) {
 		r.Post("/", getMetricValueJSONHandler)
@@ -108,6 +81,15 @@ func ConfigServerRouter() http.Handler {
 	})
 
 	return r
+}
+
+func pingHandler(rw http.ResponseWriter, r *http.Request) {
+
+	if store.Ping() {
+		rw.WriteHeader(http.StatusOK)
+	} else {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {

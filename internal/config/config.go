@@ -11,4 +11,5 @@ type ServerConfig struct {
 	StoreInterval int
 	FileStorePath string
 	Restore       bool
+	DatabaseDsn   string
 }
