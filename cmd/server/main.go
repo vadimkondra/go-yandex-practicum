@@ -91,7 +91,7 @@ func ConfigServerRouter() http.Handler {
 	return r
 }
 
-type loggingResponseWriter struct {
+type LoggingResponseWriter struct {
 	http.ResponseWriter
 	statusCode int
 	size       int
@@ -101,7 +101,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		lw := &loggingResponseWriter{
+		lw := &LoggingResponseWriter{
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
 		}
