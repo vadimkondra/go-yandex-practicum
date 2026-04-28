@@ -14,12 +14,24 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
 	parseFlags()
+
+	if AppConfig.Restore {
+		err := loadMetricsFromFile(AppConfig.FileStorePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if AppConfig.StoreInterval > 0 {
+		go storeMetrics(AppConfig.StoreInterval, AppConfig.FileStorePath)
+	}
 
 	r := ConfigServerRouter()
 
@@ -35,15 +47,107 @@ func main() {
 	}
 }
 
+func storeMetrics(storeInterval int, filePath string) {
+	ticker := time.NewTicker(time.Duration(storeInterval) * time.Second)
+
+	defer ticker.Stop()
+	for range ticker.C {
+		if err := saveMetricsToFile(filePath); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func saveMetricsToFile(filePath string) error {
+
+	metrics := make([]models.Metrics, 0)
+	for name, value := range storage.GetAllGauges() {
+		v := value
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &v,
+		})
+	}
+	for name, value := range storage.GetAllCounters() {
+		v := value
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Counter,
+			Delta: &v,
+		})
+	}
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return json.NewEncoder(file).Encode(metrics)
+
+}
+
+func loadMetricsFromFile(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer file.Close()
+
+	var metrics []models.Metrics
+	if err := json.NewDecoder(file).Decode(&metrics); err != nil {
+		return err
+	}
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value != nil {
+				storage.SetGauge(metric.ID, *metric.Value)
+			}
+		case models.Counter:
+			if metric.Delta != nil {
+				storage.AddCounter(metric.ID, *metric.Delta)
+			}
+		}
+	}
+
+	return nil
+}
+
 var AppConfig config.ServerConfig
 
 var storage repository.MetricsStorage = repository.NewMemStorage()
 
 func parseFlags() {
 	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
+	flag.IntVar(&AppConfig.StoreInterval, "i", 300, "interval in seconds between metrics store")
+	flag.StringVar(&AppConfig.FileStorePath, "f", "./metric-data", "path to store data")
+	flag.BoolVar(&AppConfig.Restore, "r", false, "restore metric data")
 
-	// парсим переданные серверу аргументы в зарегистрированные переменные
 	flag.Parse()
+
+	if storeInterval := os.Getenv("STORE_INTERVAL"); storeInterval != "" {
+		parsedStoreInterval, err := strconv.Atoi(storeInterval)
+
+		if err == nil {
+			AppConfig.StoreInterval = parsedStoreInterval
+		}
+	}
+
+	if filePath := os.Getenv("FILE_STORAGE_PATH"); filePath != "" {
+		AppConfig.FileStorePath = filePath
+	}
+
+	if restore := os.Getenv("RESTORE"); restore != "" {
+		parsedRestore, err := strconv.ParseBool(restore)
+
+		if err == nil {
+			AppConfig.Restore = parsedRestore
+		}
+	}
 
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
 		AppConfig.ServerAddress = envRunAddr
