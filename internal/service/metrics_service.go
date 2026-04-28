@@ -4,7 +4,7 @@ import (
 	"go-yandex-practicum/internal/store"
 )
 
-var storage store.Storage = store.NewMemoryStorage()
+var storage store.Storage
 
 func SetStorage(s store.Storage) {
 	storage = s

@@ -1,6 +1,10 @@
 package store
 
-import "database/sql"
+import (
+	"database/sql"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
 
 type PostgresStorage struct {
 	db *sql.DB
