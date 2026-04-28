@@ -21,7 +21,14 @@ var AppConfig config.ServerConfig
 
 func main() {
 	ParseFlags()
-	InitStorage()
+
+	storage := InitStorage()
+
+	defer func() {
+		if err := storage.Close(); err != nil {
+			log.Printf("close storage: %v", err)
+		}
+	}()
 
 	r := ConfigServerRouter()
 
@@ -37,21 +44,16 @@ func main() {
 	}
 }
 
-func InitStorage() {
+func InitStorage() store.Storage {
 	storage, err := store.NewStorage(AppConfig)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	defer func(storage store.Storage) {
-		err := storage.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(storage)
-
 	service.SetStorage(storage)
+
+	return storage
 }
 
 func ConfigServerRouter() http.Handler {
