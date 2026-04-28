@@ -36,15 +36,15 @@ func (s *PostgresStorage) Close() error {
 }
 
 func (s *PostgresStorage) createTables() error {
-	_, err := s.db.Exec(`
+	/*_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS metrics (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
 			delta BIGINT,
 			value DOUBLE PRECISION
 		)
-	`)
-	return err
+	`)*/
+	return nil
 }
 
 func (s *PostgresStorage) SetGauge(name string, value float64) error {
