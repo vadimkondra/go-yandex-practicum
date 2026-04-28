@@ -41,9 +41,7 @@ func InitStorage() {
 	storage, err := store.NewStorage(AppConfig)
 
 	if err != nil {
-
 		log.Fatal(err)
-
 	}
 
 	defer func(storage store.Storage) {
