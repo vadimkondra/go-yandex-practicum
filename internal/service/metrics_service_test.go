@@ -18,6 +18,15 @@ func newMockStorage() *mockStorage {
 	}
 }
 
+func setTestStorage(t *testing.T) *mockStorage {
+	t.Helper()
+
+	mock := newMockStorage()
+	SetStorage(mock)
+
+	return mock
+}
+
 func (m *mockStorage) SetGauge(name string, value float64) error {
 	if m.err != nil {
 		return m.err
@@ -79,8 +88,7 @@ func (m *mockStorage) Close() error {
 }
 
 func TestServiceSetAndGetGauge(t *testing.T) {
-	mock := newMockStorage()
-	SetStorage(mock)
+	setTestStorage(t)
 
 	err := SetGauge("Alloc", 123.45)
 	if err != nil {
@@ -102,8 +110,7 @@ func TestServiceSetAndGetGauge(t *testing.T) {
 }
 
 func TestServiceAddAndGetCounter(t *testing.T) {
-	mock := newMockStorage()
-	SetStorage(mock)
+	setTestStorage(t)
 
 	got, err := AddCounter("PollCount", 2)
 	if err != nil {
@@ -138,8 +145,7 @@ func TestServiceAddAndGetCounter(t *testing.T) {
 }
 
 func TestServiceGetAllGauges(t *testing.T) {
-	mock := newMockStorage()
-	SetStorage(mock)
+	setTestStorage(t)
 
 	if err := SetGauge("Alloc", 1.5); err != nil {
 		t.Fatalf("SetGauge() error = %v", err)
@@ -168,8 +174,7 @@ func TestServiceGetAllGauges(t *testing.T) {
 }
 
 func TestServiceGetAllCounters(t *testing.T) {
-	mock := newMockStorage()
-	SetStorage(mock)
+	setTestStorage(t)
 
 	if _, err := AddCounter("PollCount", 2); err != nil {
 		t.Fatalf("AddCounter() error = %v", err)
@@ -198,8 +203,7 @@ func TestServiceGetAllCounters(t *testing.T) {
 }
 
 func TestServicePingSuccess(t *testing.T) {
-	mock := newMockStorage()
-	SetStorage(mock)
+	setTestStorage(t)
 
 	ok, err := Ping()
 	if err != nil {
@@ -214,9 +218,8 @@ func TestServicePingSuccess(t *testing.T) {
 func TestServiceReturnsStorageError(t *testing.T) {
 	expectedErr := errors.New("storage error")
 
-	mock := newMockStorage()
+	mock := setTestStorage(t)
 	mock.err = expectedErr
-	SetStorage(mock)
 
 	if err := SetGauge("Alloc", 1); !errors.Is(err, expectedErr) {
 		t.Fatalf("expected SetGauge error %v, got %v", expectedErr, err)
