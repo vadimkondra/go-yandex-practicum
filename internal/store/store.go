@@ -7,7 +7,7 @@ import (
 
 var db *sql.DB
 
-func InitDb(databaseDsn string) {
+func InitDB(databaseDsn string) {
 	db, err := sql.Open("pgx", databaseDsn)
 	if err != nil {
 		log.Fatal(err)
@@ -28,7 +28,7 @@ func Ping() bool {
 	return true
 }
 
-func CloseDb() {
+func CloseDB() {
 	if db != nil {
 		db.Close()
 	}

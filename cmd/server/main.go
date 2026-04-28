@@ -34,8 +34,8 @@ func main() {
 	}
 
 	if AppConfig.DatabaseDsn != "" {
-		store.InitDb(AppConfig.DatabaseDsn)
-		defer store.CloseDb()
+		store.InitDB(AppConfig.DatabaseDsn)
+		defer store.CloseDB()
 	}
 
 	r := ConfigServerRouter()
