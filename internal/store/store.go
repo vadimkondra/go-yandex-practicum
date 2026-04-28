@@ -1,35 +1,12 @@
 package store
 
-import (
-	"database/sql"
-	"log"
-)
-
-var db *sql.DB
-
-func InitDB(databaseDsn string) {
-	db, err := sql.Open("pgx", databaseDsn)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := db.Ping(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func Ping() bool {
-	if db == nil {
-		return false
-	}
-	if err := db.Ping(); err != nil {
-		return false
-	}
-	return true
-}
-
-func CloseDB() {
-	if db != nil {
-		db.Close()
-	}
+type Storage interface {
+	SetGauge(name string, value float64) error
+	AddCounter(name string, delta int64) (int64, error)
+	GetGauge(name string) (float64, bool, error)
+	GetCounter(name string) (int64, bool, error)
+	GetAllGauges() (map[string]float64, error)
+	GetAllCounters() (map[string]int64, error)
+	Ping() error
+	Close() error
 }

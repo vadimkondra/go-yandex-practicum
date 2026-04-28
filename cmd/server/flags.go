@@ -19,6 +19,10 @@ func ParseFlags() {
 		AppConfig.ServerAddress = envRunAddr
 	}
 
+	if dataBaseDsn := os.Getenv("DATABASE_DSN"); dataBaseDsn != "" {
+		AppConfig.DatabaseDsn = dataBaseDsn
+	}
+
 	if storeInterval := os.Getenv("STORE_INTERVAL"); storeInterval != "" {
 		parsedStoreInterval, err := strconv.Atoi(storeInterval)
 
@@ -37,10 +41,6 @@ func ParseFlags() {
 		if err == nil {
 			AppConfig.Restore = parsedRestore
 		}
-	}
-
-	if dataBaseDsn := os.Getenv("DATABASE_DSN"); dataBaseDsn != "" {
-		AppConfig.DatabaseDsn = dataBaseDsn
 	}
 
 }

@@ -21,22 +21,7 @@ var AppConfig config.ServerConfig
 
 func main() {
 	ParseFlags()
-
-	if AppConfig.Restore {
-		err := service.LoadMetricsFromFile(AppConfig.FileStorePath)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if AppConfig.StoreInterval > 0 {
-		go service.StoreMetrics(AppConfig.StoreInterval, AppConfig.FileStorePath)
-	}
-
-	if AppConfig.DatabaseDsn != "" {
-		store.InitDB(AppConfig.DatabaseDsn)
-		defer store.CloseDB()
-	}
+	InitStorage()
 
 	r := ConfigServerRouter()
 
@@ -50,6 +35,25 @@ func main() {
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func InitStorage() {
+	storage, err := store.NewStorage(AppConfig)
+
+	if err != nil {
+
+		log.Fatal(err)
+
+	}
+
+	defer func(storage store.Storage) {
+		err := storage.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(storage)
+
+	service.SetStorage(storage)
 }
 
 func ConfigServerRouter() http.Handler {
@@ -85,10 +89,11 @@ func ConfigServerRouter() http.Handler {
 
 func pingHandler(rw http.ResponseWriter, r *http.Request) {
 
-	if store.Ping() {
-		rw.WriteHeader(http.StatusOK)
-	} else {
+	result, err := service.Ping()
+	if err != nil || result != true {
 		rw.WriteHeader(http.StatusInternalServerError)
+	} else {
+		rw.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -119,7 +124,7 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "delta required", http.StatusBadRequest)
 			return
 		}
-		val := service.AddCounter(m.ID, *m.Delta)
+		val, _ := service.AddCounter(m.ID, *m.Delta)
 
 		resp := models.Metrics{
 			ID:    m.ID,
@@ -137,7 +142,10 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "value required", http.StatusBadRequest)
 			return
 		}
-		service.SetGauge(m.ID, *m.Value)
+		err := service.SetGauge(m.ID, *m.Value)
+		if err != nil {
+			return
+		}
 
 		resp := models.Metrics{
 			ID:    m.ID,
@@ -183,7 +191,11 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		service.SetGauge(metricName, val)
+
+		err = service.SetGauge(metricName, val)
+		if err != nil {
+			return
+		}
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
@@ -199,7 +211,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch metricType {
 	case models.Counter:
-		value, ok := service.GetCounter(metricName)
+		value, ok, _ := service.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -207,7 +219,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case models.Gauge:
-		value, ok := service.GetGauge(metricName)
+		value, ok, _ := service.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -250,7 +262,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch req.MType {
 	case models.Counter:
-		value, ok := service.GetCounter(req.ID)
+		value, ok, _ := service.GetCounter(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
@@ -262,7 +274,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Delta: &value,
 		}
 	case models.Gauge:
-		value, ok := service.GetGauge(req.ID)
+		value, ok, _ := service.GetGauge(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
@@ -302,13 +314,17 @@ func buildMetricsListResponse(rw http.ResponseWriter) {
 	io.WriteString(rw, "<h1>Metrics</h1>")
 
 	io.WriteString(rw, "<h2>Gauges</h2><ul>")
-	for name, value := range service.GetAllGauges() {
+
+	gauges, _ := service.GetAllGauges()
+	for name, value := range gauges {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %v</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
 
 	io.WriteString(rw, "<h2>Counters</h2><ul>")
-	for name, value := range service.GetAllCounters() {
+
+	counters, _ := service.GetAllCounters()
+	for name, value := range counters {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %d</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
