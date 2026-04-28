@@ -7,30 +7,31 @@ import (
 	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
-	"go-yandex-practicum/internal/repository"
+	"go-yandex-practicum/internal/service"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+var AppConfig config.ServerConfig
 
 func main() {
 	parseFlags()
 
 	if AppConfig.Restore {
-		err := loadMetricsFromFile(AppConfig.FileStorePath)
+		err := service.LoadMetricsFromFile(AppConfig.FileStorePath)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
 	if AppConfig.StoreInterval > 0 {
-		go storeMetrics(AppConfig.StoreInterval, AppConfig.FileStorePath)
+		go service.StoreMetrics(AppConfig.StoreInterval, AppConfig.FileStorePath)
 	}
 
 	r := ConfigServerRouter()
@@ -46,80 +47,6 @@ func main() {
 		log.Fatal(err)
 	}
 }
-
-func storeMetrics(storeInterval int, filePath string) {
-	ticker := time.NewTicker(time.Duration(storeInterval) * time.Second)
-
-	defer ticker.Stop()
-	for range ticker.C {
-		if err := saveMetricsToFile(filePath); err != nil {
-			log.Fatal(err)
-		}
-	}
-}
-
-func saveMetricsToFile(filePath string) error {
-
-	metrics := make([]models.Metrics, 0)
-	for name, value := range storage.GetAllGauges() {
-		v := value
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Gauge,
-			Value: &v,
-		})
-	}
-	for name, value := range storage.GetAllCounters() {
-		v := value
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Counter,
-			Delta: &v,
-		})
-	}
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return json.NewEncoder(file).Encode(metrics)
-
-}
-
-func loadMetricsFromFile(filePath string) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer file.Close()
-
-	var metrics []models.Metrics
-	if err := json.NewDecoder(file).Decode(&metrics); err != nil {
-		return err
-	}
-
-	for _, metric := range metrics {
-		switch metric.MType {
-		case models.Gauge:
-			if metric.Value != nil {
-				storage.SetGauge(metric.ID, *metric.Value)
-			}
-		case models.Counter:
-			if metric.Delta != nil {
-				storage.AddCounter(metric.ID, *metric.Delta)
-			}
-		}
-	}
-
-	return nil
-}
-
-var AppConfig config.ServerConfig
-
-var storage repository.MetricsStorage = repository.NewMemStorage()
 
 func parseFlags() {
 	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
@@ -210,7 +137,7 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "delta required", http.StatusBadRequest)
 			return
 		}
-		val := storage.AddCounter(m.ID, *m.Delta)
+		val := service.AddCounter(m.ID, *m.Delta)
 
 		resp := models.Metrics{
 			ID:    m.ID,
@@ -228,7 +155,7 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "value required", http.StatusBadRequest)
 			return
 		}
-		storage.SetGauge(m.ID, *m.Value)
+		service.SetGauge(m.ID, *m.Value)
 
 		resp := models.Metrics{
 			ID:    m.ID,
@@ -266,7 +193,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		storage.AddCounter(metricName, val)
+		service.AddCounter(metricName, val)
 
 	case models.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -274,7 +201,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		storage.SetGauge(metricName, val)
+		service.SetGauge(metricName, val)
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
@@ -290,7 +217,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch metricType {
 	case models.Counter:
-		value, ok := storage.GetCounter(metricName)
+		value, ok := service.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -298,7 +225,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case models.Gauge:
-		value, ok := storage.GetGauge(metricName)
+		value, ok := service.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -341,7 +268,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch req.MType {
 	case models.Counter:
-		value, ok := storage.GetCounter(req.ID)
+		value, ok := service.GetCounter(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
@@ -353,7 +280,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Delta: &value,
 		}
 	case models.Gauge:
-		value, ok := storage.GetGauge(req.ID)
+		value, ok := service.GetGauge(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
@@ -376,40 +303,16 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func writeMetricJSONValueResponse(rw http.ResponseWriter, metricType string, metricName string, metricValue float64) {
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(http.StatusOK)
-
-	var resp = models.Metrics{
-		ID:    metricName,
-		MType: metricType,
-	}
-
-	switch metricType {
-	case models.Counter:
-		v := int64(metricValue)
-		resp.Delta = &v
-	case models.Gauge:
-		v := metricValue
-		resp.Value = &v
-	}
-
-	err := json.NewEncoder(rw).Encode(resp)
-	if err != nil {
-		return
-	}
-}
-
 func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Write([]byte(metricValue))
 }
 
 func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
-	buildMetricsListResponse(storage, rw)
+	buildMetricsListResponse(rw)
 }
 
-func buildMetricsListResponse(storage repository.MetricsStorage, rw http.ResponseWriter) {
+func buildMetricsListResponse(rw http.ResponseWriter) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(http.StatusOK)
 
@@ -417,13 +320,13 @@ func buildMetricsListResponse(storage repository.MetricsStorage, rw http.Respons
 	io.WriteString(rw, "<h1>Metrics</h1>")
 
 	io.WriteString(rw, "<h2>Gauges</h2><ul>")
-	for name, value := range storage.GetAllGauges() {
+	for name, value := range service.GetAllGauges() {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %v</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
 
 	io.WriteString(rw, "<h2>Counters</h2><ul>")
-	for name, value := range storage.GetAllCounters() {
+	for name, value := range service.GetAllCounters() {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %d</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
