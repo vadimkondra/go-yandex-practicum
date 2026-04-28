@@ -24,11 +24,7 @@ func main() {
 
 	storage := InitStorage()
 
-	defer func() {
-		if err := storage.Close(); err != nil {
-			log.Printf("close storage: %v", err)
-		}
-	}()
+	defer storage.Close()
 
 	r := ConfigServerRouter()
 
