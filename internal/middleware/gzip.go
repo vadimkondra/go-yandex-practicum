@@ -23,10 +23,6 @@ func (c *compressWriter) Header() http.Header {
 	return c.w.Header()
 }
 
-func (c *compressWriter) Write(p []byte) (int, error) {
-	return c.zw.Write(p)
-}
-
 func (c *compressWriter) WriteHeader(statusCode int) {
 	if statusCode < 300 {
 		c.w.Header().Set("Content-Encoding", "gzip")
@@ -34,9 +30,19 @@ func (c *compressWriter) WriteHeader(statusCode int) {
 	c.w.WriteHeader(statusCode)
 }
 
-// Close закрывает gzip.Writer и досылает все данные из буфера.
 func (c *compressWriter) Close() error {
 	return c.zw.Close()
+}
+
+func (c *compressWriter) Write(p []byte) (int, error) {
+	contentType := c.w.Header().Get("Content-Type")
+
+	if strings.Contains(contentType, "application/json") ||
+		strings.Contains(contentType, "text/html") {
+		c.Header().Set("Content-Encoding", "gzip")
+		return c.zw.Write(p)
+	}
+	return c.w.Write(p)
 }
 
 // compressReader реализует интерфейс io.ReadCloser и позволяет прозрачно для сервера

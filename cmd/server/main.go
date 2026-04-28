@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
@@ -15,6 +14,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func main() {
@@ -53,7 +54,7 @@ func ConfigServerRouter() http.Handler {
 
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
-	//r.Use(middleware.GzipMiddleware)
+	r.Use(middleware.GzipMiddleware)
 
 	r.Get("/", getMetricsListHandler)
 
