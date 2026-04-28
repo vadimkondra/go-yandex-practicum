@@ -90,7 +90,7 @@ func ConfigServerRouter() http.Handler {
 func pingHandler(rw http.ResponseWriter, r *http.Request) {
 
 	result, err := service.Ping()
-	if err != nil || result != true {
+	if err != nil || !result {
 		rw.WriteHeader(http.StatusInternalServerError)
 	} else {
 		rw.WriteHeader(http.StatusOK)
