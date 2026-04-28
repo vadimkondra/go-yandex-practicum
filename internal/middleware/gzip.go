@@ -8,8 +8,10 @@ import (
 )
 
 type compressWriter struct {
-	w  http.ResponseWriter
-	zw *gzip.Writer
+	w           http.ResponseWriter
+	zw          *gzip.Writer
+	compressed  bool
+	wroteHeader bool
 }
 
 func newCompressWriter(w http.ResponseWriter) *compressWriter {
@@ -24,25 +26,45 @@ func (c *compressWriter) Header() http.Header {
 }
 
 func (c *compressWriter) WriteHeader(statusCode int) {
-	if statusCode < 300 {
-		c.w.Header().Set("Content-Encoding", "gzip")
+	if c.wroteHeader {
+		return
 	}
+
+	if statusCode < 300 && c.shouldCompress() {
+		c.Header().Set("Content-Encoding", "gzip")
+		c.Header().Del("Content-Length")
+		c.compressed = true
+	}
+
+	c.wroteHeader = true
 	c.w.WriteHeader(statusCode)
 }
 
 func (c *compressWriter) Close() error {
+	if !c.compressed {
+		return nil
+	}
+
 	return c.zw.Close()
 }
 
 func (c *compressWriter) Write(p []byte) (int, error) {
-	contentType := c.w.Header().Get("Content-Type")
+	if !c.wroteHeader {
+		c.WriteHeader(http.StatusOK)
+	}
 
-	if strings.Contains(contentType, "application/json") ||
-		strings.Contains(contentType, "text/html") {
-		c.Header().Set("Content-Encoding", "gzip")
+	if c.compressed {
 		return c.zw.Write(p)
 	}
+
 	return c.w.Write(p)
+}
+
+func (c *compressWriter) shouldCompress() bool {
+	contentType := c.Header().Get("Content-Type")
+
+	return strings.Contains(contentType, "application/json") ||
+		strings.Contains(contentType, "text/html")
 }
 
 // compressReader реализует интерфейс io.ReadCloser и позволяет прозрачно для сервера
@@ -100,7 +122,7 @@ func GzipMiddleware(h http.Handler) http.Handler {
 			// оборачиваем тело запроса в io.Reader с поддержкой декомпрессии
 			cr, err := newCompressReader(r.Body)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				http.Error(w, "invalid gzip body", http.StatusBadRequest)
 				return
 			}
 			// меняем тело запроса на новое
