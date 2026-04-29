@@ -3,11 +3,15 @@ package store
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
+	"go-yandex-practicum/internal/retry"
 	"log"
+	"strings"
 
 	"go-yandex-practicum/internal/model"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
@@ -60,31 +64,34 @@ func (s *PostgresStorage) createTables() error {
 }
 
 func (s *PostgresStorage) SetGauge(name string, value float64) error {
-	_, err := s.db.Exec(`
+	return retry.Do(func() error {
+		_, err := s.db.Exec(`
 		INSERT INTO metrics (id, type, value, delta)
 		VALUES ($1, $2, $3, NULL)
 		ON CONFLICT (id) DO UPDATE
 		SET type = EXCLUDED.type,
 		    value = EXCLUDED.value,
 		    delta = NULL
-	`, name, models.Gauge, value)
+	`, name, model.Gauge, value)
 
-	return err
+		return err
+	}, isRetriablePostgresError)
 }
 
 func (s *PostgresStorage) AddCounter(name string, delta int64) (int64, error) {
 	var result int64
 
-	err := s.db.QueryRow(`
-		INSERT INTO metrics (id, type, delta, value)
-		VALUES ($1, $2, $3, NULL)
-		ON CONFLICT (id) DO UPDATE
-		SET type = EXCLUDED.type,
-		    delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta,
-		    value = NULL
-		RETURNING delta
-	`, name, models.Counter, delta).Scan(&result)
-
+	err := retry.Do(func() error {
+		return s.db.QueryRow(`
+			INSERT INTO metrics (id, type, delta, value)
+			VALUES ($1, $2, $3, NULL)
+			ON CONFLICT (id) DO UPDATE
+			SET type = EXCLUDED.type,
+			    delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta,
+			    value = NULL
+			RETURNING delta
+		`, name, model.Counter, delta).Scan(&result)
+	}, isRetriablePostgresError)
 	return result, err
 }
 
@@ -95,7 +102,7 @@ func (s *PostgresStorage) GetGauge(name string) (float64, bool, error) {
 		SELECT value
 		FROM metrics
 		WHERE id = $1 AND type = $2
-	`, name, models.Gauge).Scan(&value)
+	`, name, model.Gauge).Scan(&value)
 	if err == sql.ErrNoRows {
 		return 0, false, nil
 	}
@@ -113,7 +120,7 @@ func (s *PostgresStorage) GetCounter(name string) (int64, bool, error) {
 		SELECT delta
 		FROM metrics
 		WHERE id = $1 AND type = $2
-	`, name, models.Counter).Scan(&delta)
+	`, name, model.Counter).Scan(&delta)
 	if err == sql.ErrNoRows {
 		return 0, false, nil
 	}
@@ -129,7 +136,7 @@ func (s *PostgresStorage) GetAllGauges() (map[string]float64, error) {
 		SELECT id, value
 		FROM metrics
 		WHERE type = $1
-	`, models.Gauge)
+	`, model.Gauge)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +165,7 @@ func (s *PostgresStorage) GetAllCounters() (map[string]int64, error) {
 		SELECT id, delta
 		FROM metrics
 		WHERE type = $1
-	`, models.Counter)
+	`, model.Counter)
 	if err != nil {
 		return nil, err
 	}
@@ -180,4 +187,112 @@ func (s *PostgresStorage) GetAllCounters() (map[string]int64, error) {
 	}
 
 	return result, nil
+}
+
+func (s *PostgresStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+	var updated []model.Metrics
+
+	err := retry.Do(func() error {
+		result, err := s.updateBatchOnce(metrics)
+		if err != nil {
+			return err
+		}
+
+		updated = result
+		return nil
+	}, isRetriablePostgresError)
+
+	return updated, err
+}
+
+func (s *PostgresStorage) updateBatchOnce(metrics []model.Metrics) ([]model.Metrics, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	updated := make([]model.Metrics, 0, len(metrics))
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case model.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+
+			var value float64
+
+			err := tx.QueryRow(`
+				INSERT INTO metrics (id, type, value, delta)
+				VALUES ($1, $2, $3, NULL)
+				ON CONFLICT (id) DO UPDATE
+				SET type = EXCLUDED.type,
+				    value = EXCLUDED.value,
+				    delta = NULL
+				RETURNING value
+			`, metric.ID, model.Gauge, *metric.Value).Scan(&value)
+			if err != nil {
+				return nil, err
+			}
+
+			updated = append(updated, model.Metrics{
+				ID:    metric.ID,
+				MType: model.Gauge,
+				Value: &value,
+			})
+
+		case model.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+
+			var delta int64
+
+			err := tx.QueryRow(`
+				INSERT INTO metrics (id, type, delta, value)
+				VALUES ($1, $2, $3, NULL)
+				ON CONFLICT (id) DO UPDATE
+				SET type = EXCLUDED.type,
+				    delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta,
+				    value = NULL
+				RETURNING delta
+			`, metric.ID, model.Counter, *metric.Delta).Scan(&delta)
+			if err != nil {
+				return nil, err
+			}
+
+			updated = append(updated, model.Metrics{
+				ID:    metric.ID,
+				MType: model.Counter,
+				Delta: &delta,
+			})
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
+
+	return updated, nil
+}
+
+func isRetriablePostgresError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return strings.HasPrefix(pgErr.Code, "08")
+	}
+	return false
+
 }

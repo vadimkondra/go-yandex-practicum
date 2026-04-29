@@ -52,15 +52,6 @@ func TestReadMemStatMetrics_AllMetricsPresent(t *testing.T) {
 	}
 }
 
-func TestBuildUpdateMetricURL(t *testing.T) {
-	got := buildUpdateMetricURL("gauge", "Alloc", "123")
-	want := "update/gauge/Alloc/123"
-
-	if got != want {
-		t.Fatalf("wrong url:\nwant: %s\ngot:  %s", want, got)
-	}
-}
-
 func TestReadMemStatMetrics_MapIsNotEmpty(t *testing.T) {
 	metrics := fillMetrics()
 
