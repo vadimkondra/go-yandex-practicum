@@ -13,10 +13,11 @@ var storage DBStorage
 
 func InitDB(databaseDSN string) {
 	db, err := sql.Open("pgx", databaseDSN)
-	storage := &DBStorage{db: db}
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	storage.db = db
 
 	if err := storage.db.Ping(); err != nil {
 		log.Fatal(err)
