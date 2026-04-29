@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -81,17 +85,47 @@ func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) 
 	return "update/" + metricType + "/" + metricNm + "/" + metricVal
 }
 
-func sendRequest(client *http.Client, url string) error {
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+func sendRequest(client *http.Client, url string, body []byte) error {
+	var buf bytes.Buffer
+
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
+		return fmt.Errorf("gzip write request body: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("gzip close request body: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, &buf)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer response.Body.Close()
+
+	var responseBody io.Reader = response.Body
+	if response.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(response.Body)
+		if err != nil {
+			return fmt.Errorf("gzip read response body: %w", err)
+		}
+		defer gzReader.Close()
+
+		responseBody = gzReader
+	}
+
+	_, err = io.ReadAll(responseBody)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
 
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
@@ -111,28 +145,29 @@ func sendMetrics(client *http.Client, metrics []models.Metrics) error {
 }
 
 func sendMetric(client *http.Client, metric models.Metrics) error {
-	var metricValue string
-
 	switch metric.MType {
 	case models.Gauge:
 		if metric.Value == nil {
 			return fmt.Errorf("gauge metric %q has nil value", metric.ID)
 		}
-		metricValue = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 
 	case models.Counter:
 		if metric.Delta == nil {
 			return fmt.Errorf("counter metric %q has nil delta", metric.ID)
 		}
-		metricValue = strconv.FormatInt(*metric.Delta, 10)
 
 	default:
 		return fmt.Errorf("unknown metric type %q", metric.MType)
 	}
 
-	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL(metric.MType, metric.ID, metricValue)
+	body, err := json.Marshal(metric)
+	if err != nil {
+		return fmt.Errorf("marshal metric: %w", err)
+	}
 
-	return sendRequest(client, url)
+	url := "http://" + AppConfig.ServerAddress + "/update/"
+
+	return sendRequest(client, url, body)
 }
 
 func fillMetrics() []models.Metrics {

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"go-yandex-practicum/internal/config"
+	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/repository"
 	"io"
@@ -13,9 +14,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -38,7 +36,6 @@ func main() {
 }
 
 var AppConfig config.ServerConfig
-var sugar zap.SugaredLogger
 
 var storage repository.MetricsStorage = repository.NewMemStorage()
 
@@ -55,18 +52,9 @@ func parseFlags() {
 
 func ConfigServerRouter() http.Handler {
 
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		// вызываем панику, если ошибка
-		panic(err)
-	}
-	defer logger.Sync()
-
-	// делаем регистратор SugaredLogger
-	sugar = *logger.Sugar()
-
 	r := chi.NewRouter()
-	r.Use(LoggingMiddleware)
+	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.GzipMiddleware)
 
 	r.Get("/", getMetricsListHandler)
 
@@ -89,36 +77,6 @@ func ConfigServerRouter() http.Handler {
 	})
 
 	return r
-}
-
-type LoggingResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-	size       int
-}
-
-func LoggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		lw := &LoggingResponseWriter{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
-
-		next.ServeHTTP(lw, r)
-
-		duration := time.Since(start)
-
-		sugar.Infow(
-			"request completed",
-			"uri", r.RequestURI,
-			"method", r.Method,
-			"duration", duration,
-			"status", lw.statusCode,
-			"size", lw.size,
-		)
-	})
 }
 
 func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
