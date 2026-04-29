@@ -7,7 +7,7 @@ type MemStorage struct {
 
 type MetricsStorage interface {
 	SetGauge(name string, value float64)
-	AddCounter(name string, value int64)
+	AddCounter(name string, value int64) int64
 
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
@@ -43,8 +43,9 @@ func (s *MemStorage) SetGauge(name string, value float64) {
 	s.gauges[name] = value
 }
 
-func (s *MemStorage) AddCounter(name string, value int64) {
+func (s *MemStorage) AddCounter(name string, value int64) int64 {
 	s.counters[name] += value
+	return s.counters[name]
 }
 
 func (s *MemStorage) GetGauge(name string) (float64, bool) {
