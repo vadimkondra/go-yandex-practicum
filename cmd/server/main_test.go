@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go-yandex-practicum/internal/handler"
 	"go-yandex-practicum/internal/service"
 	"go-yandex-practicum/internal/store"
 	"net/http"
@@ -16,7 +17,7 @@ func setupRouter() http.Handler {
 	r.Route("/update", func(r chi.Router) {
 		r.Route("/{metric-type}", func(r chi.Router) {
 			r.Route("/{metric-name}", func(r chi.Router) {
-				r.Post("/{metric-value}", metricHandler)
+				r.Post("/{metric-value}", handler.MetricHandler)
 			})
 		})
 	})
