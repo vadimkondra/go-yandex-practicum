@@ -73,11 +73,7 @@ func isRetriableHTTPError(err error) bool {
 	}
 
 	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return true
-	}
-
-	return false
+	return errors.As(err, &urlErr)
 }
 
 func sendRequestOnce(client *http.Client, url string, body []byte) error {
