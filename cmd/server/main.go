@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -36,11 +35,7 @@ func main() {
 		defer store.CloseDB()
 	}
 
-	log.Println("before router")
 	r := ConfigServerRouter()
-	log.Println("after router")
-
-	log.Println("before listen")
 
 	_, port, err := net.SplitHostPort(config.ServerAddress)
 	if err != nil {
@@ -291,26 +286,6 @@ func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.Write([]byte(metricValue))
 }
-
-func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, metricTypeRouteName)
-	metricName := chi.URLParam(r, metricNameRouteName)
-
-	switch metricType {
-	case models.Counter:
-		value, ok := storage.GetCounter(metricName)
-		if !ok {
-			http.Error(rw, "unknown metric name", http.StatusNotFound)
-			return
-		}
-
-		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
-	case models.Gauge:
-		value, ok := storage.GetGauge(metricName)
-		if !ok {
-			http.Error(rw, "unknown metric name", http.StatusNotFound)
-			return
-		}
 
 func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
 	buildMetricsListResponse(rw)

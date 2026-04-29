@@ -4,34 +4,29 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"flag"
 	"fmt"
+	"go-yandex-practicum/internal/config"
 	"io"
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
 	"runtime"
-	"strconv"
 	"time"
 
-	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/model"
 )
-
-var AppConfig config.AgentConfig
 
 var pollCount int64
 
 func main() {
-	parseFlags()
+	cfg := ParseFlags()
 
 	client := &http.Client{}
 
 	var metrics []models.Metrics
 
-	pollTicker := time.NewTicker(time.Duration(AppConfig.PollInterval) * time.Second)
-	reportTicker := time.NewTicker(time.Duration(AppConfig.ReportInterval) * time.Second)
+	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
 
 	for {
 		select {
@@ -42,7 +37,7 @@ func main() {
 		case <-reportTicker.C:
 			// отправляем метрики на сервер
 			if pollCount > 0 {
-				err := sendMetrics(client, metrics)
+				err := sendMetrics(cfg, client, metrics)
 				if err != nil {
 					log.Println("send metrics error:", err)
 				} else {
@@ -50,34 +45,6 @@ func main() {
 				}
 			}
 		}
-	}
-}
-
-func parseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
-	flag.IntVar(&AppConfig.PollInterval, "p", 2, "polling interval for collecting metrics")
-	flag.IntVar(&AppConfig.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
-
-	flag.Parse()
-
-	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-		AppConfig.ServerAddress = envRunAddr
-	}
-	if envRunReportInterval := os.Getenv("REPORT_INTERVAL"); envRunReportInterval != "" {
-		value, err := strconv.Atoi(envRunReportInterval)
-		if err != nil {
-			log.Fatal("invalid REPORT_INTERVAL:", err)
-		}
-
-		AppConfig.ReportInterval = value
-	}
-	if envRunPoolInterval := os.Getenv("POLL_INTERVAL"); envRunPoolInterval != "" {
-		value, err := strconv.Atoi(envRunPoolInterval)
-		if err != nil {
-			log.Fatal("invalid POLL_INTERVAL:", err)
-		}
-
-		AppConfig.PollInterval = value
 	}
 }
 
@@ -134,9 +101,9 @@ func sendRequest(client *http.Client, url string, body []byte) error {
 	return nil
 }
 
-func sendMetrics(client *http.Client, metrics []models.Metrics) error {
+func sendMetrics(cfg config.AgentConfig, client *http.Client, metrics []models.Metrics) error {
 	for _, metric := range metrics {
-		if err := sendMetric(client, metric); err != nil {
+		if err := sendMetric(cfg, client, metric); err != nil {
 			return err
 		}
 	}
@@ -144,7 +111,7 @@ func sendMetrics(client *http.Client, metrics []models.Metrics) error {
 	return nil
 }
 
-func sendMetric(client *http.Client, metric models.Metrics) error {
+func sendMetric(cfg config.AgentConfig, client *http.Client, metric models.Metrics) error {
 	switch metric.MType {
 	case models.Gauge:
 		if metric.Value == nil {
@@ -165,7 +132,7 @@ func sendMetric(client *http.Client, metric models.Metrics) error {
 		return fmt.Errorf("marshal metric: %w", err)
 	}
 
-	url := "http://" + AppConfig.ServerAddress + "/update/"
+	url := "http://" + cfg.ServerAddress + "/update/"
 
 	return sendRequest(client, url, body)
 }
