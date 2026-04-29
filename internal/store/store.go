@@ -5,15 +5,15 @@ import (
 	"log"
 )
 
-type DbStorage struct {
+type DBStorage struct {
 	db *sql.DB
 }
 
-var storage DbStorage
+var storage DBStorage
 
 func InitDB(databaseDSN string) {
 	db, err := sql.Open("pgx", databaseDSN)
-	storage := &DbStorage{db: db}
+	storage := &DBStorage{db: db}
 	if err != nil {
 		log.Fatal(err)
 	}
