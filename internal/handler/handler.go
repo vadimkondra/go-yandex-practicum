@@ -41,7 +41,7 @@ func ConfigServerRouter() http.Handler {
 		})
 	})
 
-	r.Post("/updates", MetricsHandler)
+	r.Post("/updates/", MetricsHandler)
 
 	return r
 }
