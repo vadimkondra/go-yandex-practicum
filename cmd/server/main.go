@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/service"
@@ -17,30 +16,28 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-var AppConfig config.ServerConfig
-
 func main() {
-	ParseFlags()
+	config := ParseFlags()
 
-	if AppConfig.Restore {
-		err := service.LoadMetricsFromFile(AppConfig.FileStorePath)
+	if config.Restore {
+		err := service.LoadMetricsFromFile(config.FileStorePath)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if AppConfig.StoreInterval > 0 {
-		go service.StoreMetrics(AppConfig.StoreInterval, AppConfig.FileStorePath)
+	if config.StoreInterval != 0 {
+		go service.StoreMetrics(config.StoreInterval, config.FileStorePath)
 	}
 
-	if AppConfig.DatabaseDsn != "" {
-		store.InitDB(AppConfig.DatabaseDsn)
+	if config.DatabaseDSN != "" {
+		store.InitDB(config.DatabaseDSN)
 		defer store.CloseDB()
 	}
 
 	r := ConfigServerRouter()
 
-	_, port, err := net.SplitHostPort(AppConfig.ServerAddress)
+	_, port, err := net.SplitHostPort(config.ServerAddress)
 	if err != nil {
 		log.Fatal(err)
 	}

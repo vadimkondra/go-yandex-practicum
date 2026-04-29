@@ -5,31 +5,36 @@ import (
 	"log"
 )
 
-var db *sql.DB
+type DbStorage struct {
+	db *sql.DB
+}
 
-func InitDB(databaseDsn string) {
-	db, err := sql.Open("pgx", databaseDsn)
+var storage DbStorage
+
+func InitDB(databaseDSN string) {
+	db, err := sql.Open("pgx", databaseDSN)
+	storage := &DbStorage{db: db}
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := db.Ping(); err != nil {
+	if err := storage.db.Ping(); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func Ping() bool {
-	if db == nil {
+	if storage.db == nil {
 		return false
 	}
-	if err := db.Ping(); err != nil {
+	if err := storage.db.Ping(); err != nil {
 		return false
 	}
 	return true
 }
 
 func CloseDB() {
-	if db != nil {
-		db.Close()
+	if storage.db != nil {
+		storage.db.Close()
 	}
 }
