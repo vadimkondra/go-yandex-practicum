@@ -41,7 +41,7 @@ func ConfigServerRouter() http.Handler {
 		})
 	})
 
-	r.Route("/updates", MetricsHandler)
+	r.Post("/updates", MetricsHandler)
 
 	return r
 }
@@ -255,8 +255,38 @@ func GetMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
 	buildMetricsListResponse(rw)
 }
 
-func MetricsHandler(r chi.Router) {
+func MetricsHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(rw, "invalid Content-Type", http.StatusBadRequest)
+		return
+	}
+
+	var metrics []model.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(rw, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if len(metrics) == 0 {
+		rw.WriteHeader(http.StatusOK)
+		return
+	}
+
+	updatedMetrics, err := service.UpdateMetricsBatch(metrics)
+	if err != nil {
+		http.Error(rw, "update metrics batch error", http.StatusInternalServerError)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(rw).Encode(updatedMetrics); err != nil {
+		http.Error(rw, "encode response error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func buildMetricsListResponse(rw http.ResponseWriter) {
