@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"go-yandex-practicum/internal/retry"
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
+	"net/url"
 	"runtime"
 	"time"
 
@@ -51,6 +55,28 @@ func main() {
 }
 
 func sendRequest(client *http.Client, url string, body []byte) error {
+
+	return retry.Do(func() error {
+		return sendRequestOnce(client, url, body)
+	}, isRetriableHTTPError)
+
+}
+
+func isRetriableHTTPError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
+}
+
+func sendRequestOnce(client *http.Client, url string, body []byte) error {
 	var buf bytes.Buffer
 
 	gz := gzip.NewWriter(&buf)
