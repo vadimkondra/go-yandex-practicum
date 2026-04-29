@@ -89,7 +89,39 @@ func (m *mockStorage) Close() error {
 }
 
 func (m *mockStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error) {
-	return m.UpdateBatch(metrics)
+
+	if m.err != nil {
+		return nil, m.err
+	}
+	updated := make([]model.Metrics, 0, len(metrics))
+	for _, metric := range metrics {
+		switch metric.MType {
+		case model.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+			m.gauges[metric.ID] = *metric.Value
+			value := m.gauges[metric.ID]
+			updated = append(updated, model.Metrics{
+				ID:    metric.ID,
+				MType: model.Gauge,
+				Value: &value,
+			})
+		case model.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+			m.counters[metric.ID] += *metric.Delta
+			delta := m.counters[metric.ID]
+			updated = append(updated, model.Metrics{
+				ID:    metric.ID,
+				MType: model.Counter,
+				Delta: &delta,
+			})
+		}
+	}
+	return updated, nil
+
 }
 
 func TestServiceSetAndGetGauge(t *testing.T) {
