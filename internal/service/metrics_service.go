@@ -41,7 +41,7 @@ func StoreMetrics(storeInterval int, filePath string) {
 	defer ticker.Stop()
 	for range ticker.C {
 		if err := saveMetricsToFile(filePath); err != nil {
-			log.Printf("saveMetricsToFile error", err)
+			log.Print("saveMetricsToFile error", err)
 		}
 	}
 }
