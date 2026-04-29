@@ -2,7 +2,7 @@ package store
 
 import (
 	"encoding/json"
-	models "go-yandex-practicum/internal/model"
+	"go-yandex-practicum/internal/model"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +35,7 @@ func TestFileStorageSetGaugeSavesMetricWhenStoreIntervalIsZero(t *testing.T) {
 		t.Errorf("expected ID Alloc, got %s", got.ID)
 	}
 
-	if got.MType != models.Gauge {
+	if got.MType != model.Gauge {
 		t.Errorf("expected type gauge, got %s", got.MType)
 	}
 
@@ -88,7 +88,7 @@ func TestFileStorageAddCounterSavesMetricWhenStoreIntervalIsZero(t *testing.T) {
 		t.Errorf("expected ID PollCount, got %s", got.ID)
 	}
 
-	if got.MType != models.Counter {
+	if got.MType != model.Counter {
 		t.Errorf("expected type counter, got %s", got.MType)
 	}
 
@@ -108,15 +108,15 @@ func TestFileStorageRestoreLoadsMetricsFromFile(t *testing.T) {
 	gaugeValue := 10.5
 	counterValue := int64(7)
 
-	metrics := []models.Metrics{
+	metrics := []model.Metrics{
 		{
 			ID:    "Alloc",
-			MType: models.Gauge,
+			MType: model.Gauge,
 			Value: &gaugeValue,
 		},
 		{
 			ID:    "PollCount",
-			MType: models.Counter,
+			MType: model.Counter,
 			Delta: &counterValue,
 		},
 	}
@@ -228,7 +228,7 @@ func TestFileStorageCloseSavesMetricsWhenStoreIntervalIsPositive(t *testing.T) {
 	}
 }
 
-func readMetricsFromFile(t *testing.T, filePath string) []models.Metrics {
+func readMetricsFromFile(t *testing.T, filePath string) []model.Metrics {
 	t.Helper()
 
 	file, err := os.Open(filePath)
@@ -237,7 +237,7 @@ func readMetricsFromFile(t *testing.T, filePath string) []models.Metrics {
 	}
 	defer file.Close()
 
-	var metrics []models.Metrics
+	var metrics []model.Metrics
 
 	if err := json.NewDecoder(file).Decode(&metrics); err != nil {
 		t.Fatalf("decode metrics error = %v", err)
