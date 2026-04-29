@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"go-yandex-practicum/internal/model"
 	"testing"
 )
 
@@ -85,6 +86,10 @@ func (m *mockStorage) Ping() error {
 
 func (m *mockStorage) Close() error {
 	return nil
+}
+
+func (m *mockStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+	return m.UpdateBatch(metrics)
 }
 
 func TestServiceSetAndGetGauge(t *testing.T) {
