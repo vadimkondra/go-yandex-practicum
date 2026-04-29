@@ -1,5 +1,7 @@
 package store
 
+import "go-yandex-practicum/internal/model"
+
 type Storage interface {
 	SetGauge(name string, value float64) error
 	AddCounter(name string, delta int64) (int64, error)
@@ -9,4 +11,5 @@ type Storage interface {
 	GetAllCounters() (map[string]int64, error)
 	Ping() error
 	Close() error
+	UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error)
 }
