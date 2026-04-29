@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"go-yandex-practicum/internal/model"
 	"testing"
 )
 
@@ -85,6 +86,48 @@ func (m *mockStorage) Ping() error {
 
 func (m *mockStorage) Close() error {
 	return nil
+}
+
+func (m *mockStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	updated := make([]model.Metrics, 0, len(metrics))
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case model.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+
+			m.gauges[metric.ID] = *metric.Value
+
+			value := m.gauges[metric.ID]
+			updated = append(updated, model.Metrics{
+				ID:    metric.ID,
+				MType: model.Gauge,
+				Value: &value,
+			})
+
+		case model.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+
+			m.counters[metric.ID] += *metric.Delta
+
+			delta := m.counters[metric.ID]
+			updated = append(updated, model.Metrics{
+				ID:    metric.ID,
+				MType: model.Counter,
+				Delta: &delta,
+			})
+		}
+	}
+
+	return updated, nil
 }
 
 func TestServiceSetAndGetGauge(t *testing.T) {
