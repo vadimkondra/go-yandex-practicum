@@ -1,6 +1,7 @@
 package service
 
 import (
+	models "go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/store"
 )
 
@@ -39,4 +40,8 @@ func Ping() (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func UpdateMetricsBatch(metrics []models.Metrics) ([]models.Metrics, error) {
+	return storage.UpdateBatch(metrics)
 }

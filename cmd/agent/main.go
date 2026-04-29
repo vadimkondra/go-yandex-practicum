@@ -28,7 +28,7 @@ func main() {
 
 	client := &http.Client{}
 
-	var metrics []models.Metrics
+	var metrics []model.Metrics
 
 	pollTicker := time.NewTicker(time.Duration(AppConfig.PollInterval) * time.Second)
 	reportTicker := time.NewTicker(time.Duration(AppConfig.ReportInterval) * time.Second)
@@ -40,13 +40,14 @@ func main() {
 			metrics = fillMetrics()
 
 		case <-reportTicker.C:
-			// отправляем метрики на сервер
-			if pollCount > 0 {
-				err := sendMetrics(client, metrics)
+			// отправляем метрики на сервер батчем
+			if len(metrics) > 0 {
+				err := sendMetricsBatch(client, metrics)
 				if err != nil {
-					log.Println("send metrics error:", err)
+					log.Println("send metrics batch error:", err)
 				} else {
 					pollCount = 0
+					metrics = nil
 				}
 			}
 		}
@@ -79,10 +80,6 @@ func parseFlags() {
 
 		AppConfig.PollInterval = value
 	}
-}
-
-func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) string {
-	return "update/" + metricType + "/" + metricNm + "/" + metricVal
 }
 
 func sendRequest(client *http.Client, url string, body []byte) error {
@@ -134,81 +131,60 @@ func sendRequest(client *http.Client, url string, body []byte) error {
 	return nil
 }
 
-func sendMetrics(client *http.Client, metrics []models.Metrics) error {
-	for _, metric := range metrics {
-		if err := sendMetric(client, metric); err != nil {
-			return err
-		}
+func sendMetricsBatch(client *http.Client, metrics []model.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
 	}
 
-	return nil
-}
-
-func sendMetric(client *http.Client, metric models.Metrics) error {
-	switch metric.MType {
-	case models.Gauge:
-		if metric.Value == nil {
-			return fmt.Errorf("gauge metric %q has nil value", metric.ID)
-		}
-
-	case models.Counter:
-		if metric.Delta == nil {
-			return fmt.Errorf("counter metric %q has nil delta", metric.ID)
-		}
-
-	default:
-		return fmt.Errorf("unknown metric type %q", metric.MType)
-	}
-
-	body, err := json.Marshal(metric)
+	body, err := json.Marshal(metrics)
 	if err != nil {
-		return fmt.Errorf("marshal metric: %w", err)
+		return fmt.Errorf("marshal metrics batch: %w", err)
 	}
 
-	url := "http://" + AppConfig.ServerAddress + "/update/"
+	url := "http://" + AppConfig.ServerAddress + "/updates/"
 
 	return sendRequest(client, url, body)
 }
 
-func fillMetrics() []models.Metrics {
+func fillMetrics() []model.Metrics {
 	var memStats runtime.MemStats
 
 	runtime.ReadMemStats(&memStats)
 
 	pollCount++
 
-	var metrics []models.Metrics
+	var metrics []model.Metrics
 
 	metrics = append(metrics,
-		models.Metrics{ID: "Alloc", MType: models.Gauge, Value: float64Ptr(float64(memStats.Alloc))},
-		models.Metrics{ID: "BuckHashSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.BuckHashSys))},
-		models.Metrics{ID: "Frees", MType: models.Gauge, Value: float64Ptr(float64(memStats.Frees))},
-		models.Metrics{ID: "GCCPUFraction", MType: models.Gauge, Value: float64Ptr(memStats.GCCPUFraction)},
-		models.Metrics{ID: "GCSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.GCSys))},
-		models.Metrics{ID: "HeapAlloc", MType: models.Gauge, Value: float64Ptr(float64(memStats.HeapAlloc))},
-		models.Metrics{ID: "HeapIdle", MType: models.Gauge, Value: float64Ptr(float64(memStats.HeapIdle))},
-		models.Metrics{ID: "HeapInuse", MType: models.Gauge, Value: float64Ptr(float64(memStats.HeapInuse))},
-		models.Metrics{ID: "HeapObjects", MType: models.Gauge, Value: float64Ptr(float64(memStats.HeapObjects))},
-		models.Metrics{ID: "HeapReleased", MType: models.Gauge, Value: float64Ptr(float64(memStats.HeapReleased))},
-		models.Metrics{ID: "HeapSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.HeapSys))},
-		models.Metrics{ID: "LastGC", MType: models.Gauge, Value: float64Ptr(float64(memStats.LastGC))},
-		models.Metrics{ID: "Lookups", MType: models.Gauge, Value: float64Ptr(float64(memStats.Lookups))},
-		models.Metrics{ID: "MCacheInuse", MType: models.Gauge, Value: float64Ptr(float64(memStats.MCacheInuse))},
-		models.Metrics{ID: "MCacheSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.MCacheSys))},
-		models.Metrics{ID: "MSpanInuse", MType: models.Gauge, Value: float64Ptr(float64(memStats.MSpanInuse))},
-		models.Metrics{ID: "MSpanSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.MSpanSys))},
-		models.Metrics{ID: "Mallocs", MType: models.Gauge, Value: float64Ptr(float64(memStats.Mallocs))},
-		models.Metrics{ID: "NextGC", MType: models.Gauge, Value: float64Ptr(float64(memStats.NextGC))},
-		models.Metrics{ID: "NumForcedGC", MType: models.Gauge, Value: float64Ptr(float64(memStats.NumForcedGC))},
-		models.Metrics{ID: "NumGC", MType: models.Gauge, Value: float64Ptr(float64(memStats.NumGC))},
-		models.Metrics{ID: "OtherSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.OtherSys))},
-		models.Metrics{ID: "PauseTotalNs", MType: models.Gauge, Value: float64Ptr(float64(memStats.PauseTotalNs))},
-		models.Metrics{ID: "StackInuse", MType: models.Gauge, Value: float64Ptr(float64(memStats.StackInuse))},
-		models.Metrics{ID: "StackSys", MType: models.Gauge, Value: float64Ptr(float64(memStats.StackSys))},
-		models.Metrics{ID: "Sys", MType: models.Gauge, Value: float64Ptr(float64(memStats.Sys))},
-		models.Metrics{ID: "TotalAlloc", MType: models.Gauge, Value: float64Ptr(float64(memStats.TotalAlloc))},
-		models.Metrics{ID: "RandomValue", MType: models.Gauge, Value: float64Ptr(rand.Float64())},
-		models.Metrics{ID: "PollCount", MType: models.Counter, Delta: int64Ptr(pollCount)},
+		model.Metrics{ID: "Alloc", MType: model.Gauge, Value: float64Ptr(float64(memStats.Alloc))},
+		model.Metrics{ID: "BuckHashSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.BuckHashSys))},
+		model.Metrics{ID: "Frees", MType: model.Gauge, Value: float64Ptr(float64(memStats.Frees))},
+		model.Metrics{ID: "GCCPUFraction", MType: model.Gauge, Value: float64Ptr(memStats.GCCPUFraction)},
+		model.Metrics{ID: "GCSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.GCSys))},
+		model.Metrics{ID: "HeapAlloc", MType: model.Gauge, Value: float64Ptr(float64(memStats.HeapAlloc))},
+		model.Metrics{ID: "HeapIdle", MType: model.Gauge, Value: float64Ptr(float64(memStats.HeapIdle))},
+		model.Metrics{ID: "HeapInuse", MType: model.Gauge, Value: float64Ptr(float64(memStats.HeapInuse))},
+		model.Metrics{ID: "HeapObjects", MType: model.Gauge, Value: float64Ptr(float64(memStats.HeapObjects))},
+		model.Metrics{ID: "HeapReleased", MType: model.Gauge, Value: float64Ptr(float64(memStats.HeapReleased))},
+		model.Metrics{ID: "HeapSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.HeapSys))},
+		model.Metrics{ID: "LastGC", MType: model.Gauge, Value: float64Ptr(float64(memStats.LastGC))},
+		model.Metrics{ID: "Lookups", MType: model.Gauge, Value: float64Ptr(float64(memStats.Lookups))},
+		model.Metrics{ID: "MCacheInuse", MType: model.Gauge, Value: float64Ptr(float64(memStats.MCacheInuse))},
+		model.Metrics{ID: "MCacheSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.MCacheSys))},
+		model.Metrics{ID: "MSpanInuse", MType: model.Gauge, Value: float64Ptr(float64(memStats.MSpanInuse))},
+		model.Metrics{ID: "MSpanSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.MSpanSys))},
+		model.Metrics{ID: "Mallocs", MType: model.Gauge, Value: float64Ptr(float64(memStats.Mallocs))},
+		model.Metrics{ID: "NextGC", MType: model.Gauge, Value: float64Ptr(float64(memStats.NextGC))},
+		model.Metrics{ID: "NumForcedGC", MType: model.Gauge, Value: float64Ptr(float64(memStats.NumForcedGC))},
+		model.Metrics{ID: "NumGC", MType: model.Gauge, Value: float64Ptr(float64(memStats.NumGC))},
+		model.Metrics{ID: "OtherSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.OtherSys))},
+		model.Metrics{ID: "PauseTotalNs", MType: model.Gauge, Value: float64Ptr(float64(memStats.PauseTotalNs))},
+		model.Metrics{ID: "StackInuse", MType: model.Gauge, Value: float64Ptr(float64(memStats.StackInuse))},
+		model.Metrics{ID: "StackSys", MType: model.Gauge, Value: float64Ptr(float64(memStats.StackSys))},
+		model.Metrics{ID: "Sys", MType: model.Gauge, Value: float64Ptr(float64(memStats.Sys))},
+		model.Metrics{ID: "TotalAlloc", MType: model.Gauge, Value: float64Ptr(float64(memStats.TotalAlloc))},
+		model.Metrics{ID: "RandomValue", MType: model.Gauge, Value: float64Ptr(rand.Float64())},
+		model.Metrics{ID: "PollCount", MType: model.Counter, Delta: int64Ptr(pollCount)},
 	)
 
 	return metrics

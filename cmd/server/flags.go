@@ -22,7 +22,7 @@ func ParseFlags() {
 	if dataBaseDsn := os.Getenv("DATABASE_DSN"); dataBaseDsn != "" {
 		AppConfig.DatabaseDsn = dataBaseDsn
 	}
-	//AppConfig.DatabaseDsn = "postgres://metrics:metrics@localhost:5435/metrics?sslmode=disable"
+	AppConfig.DatabaseDsn = "postgres://metrics:metrics@localhost:5435/metrics?sslmode=disable"
 
 	if storeInterval := os.Getenv("STORE_INTERVAL"); storeInterval != "" {
 		parsedStoreInterval, err := strconv.Atoi(storeInterval)

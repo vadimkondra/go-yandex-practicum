@@ -3,7 +3,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
-	models "go-yandex-practicum/internal/model"
+	model "go-yandex-practicum/internal/model"
 	"os"
 	"time"
 )
@@ -107,16 +107,16 @@ func (s *FileStorage) storePeriodically() {
 
 func (s *FileStorage) save() error {
 
-	metrics := make([]models.Metrics, 0)
+	metrics := make([]model.Metrics, 0)
 	gauges, err := s.memory.GetAllGauges()
 	if err != nil {
 		return err
 	}
 	for name, value := range gauges {
 		v := value
-		metrics = append(metrics, models.Metrics{
+		metrics = append(metrics, model.Metrics{
 			ID:    name,
-			MType: models.Gauge,
+			MType: model.Gauge,
 			Value: &v,
 		})
 	}
@@ -126,9 +126,9 @@ func (s *FileStorage) save() error {
 	}
 	for name, value := range counters {
 		v := value
-		metrics = append(metrics, models.Metrics{
+		metrics = append(metrics, model.Metrics{
 			ID:    name,
-			MType: models.Counter,
+			MType: model.Counter,
 			Delta: &v,
 		})
 	}
@@ -150,19 +150,19 @@ func (s *FileStorage) load() error {
 		return err
 	}
 	defer file.Close()
-	var metrics []models.Metrics
+	var metrics []model.Metrics
 	if err := json.NewDecoder(file).Decode(&metrics); err != nil {
 		return err
 	}
 	for _, metric := range metrics {
 		switch metric.MType {
-		case models.Gauge:
+		case model.Gauge:
 			if metric.Value != nil {
 				if err := s.memory.SetGauge(metric.ID, *metric.Value); err != nil {
 					return err
 				}
 			}
-		case models.Counter:
+		case model.Counter:
 			if metric.Delta != nil {
 				if _, err := s.memory.AddCounter(metric.ID, *metric.Delta); err != nil {
 					return err
@@ -171,4 +171,17 @@ func (s *FileStorage) load() error {
 		}
 	}
 	return nil
+}
+
+func (s *FileStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+
+	updated, err := s.memory.UpdateBatch(metrics)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.saveSyncIfNeeded(); err != nil {
+		return nil, err
+	}
+	return updated, nil
+
 }

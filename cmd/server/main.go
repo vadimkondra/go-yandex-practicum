@@ -80,7 +80,37 @@ func ConfigServerRouter() http.Handler {
 		})
 	})
 
+	r.Post("/updates/", metricsBatchJSONHandler)
+
 	return r
+}
+
+func metricsBatchJSONHandler(rw http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+
+		http.Error(rw, "only POST requests are allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var metrics []model.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(rw, "decode request error", http.StatusBadRequest)
+		return
+	}
+	if len(metrics) == 0 {
+		rw.WriteHeader(http.StatusOK)
+		return
+	}
+	updatedMetrics, err := service.UpdateMetricsBatch(metrics)
+	if err != nil {
+		http.Error(rw, "update metrics batch error", http.StatusInternalServerError)
+		return
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(rw).Encode(updatedMetrics); err != nil {
+		http.Error(rw, "encode response error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func pingHandler(rw http.ResponseWriter, r *http.Request) {
@@ -101,7 +131,7 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var m models.Metrics
+	var m model.Metrics
 
 	err := json.NewDecoder(r.Body).Decode(&m)
 	if err != nil {
@@ -115,16 +145,16 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	switch m.MType {
-	case models.Counter:
+	case model.Counter:
 		if m.Delta == nil {
 			http.Error(rw, "delta required", http.StatusBadRequest)
 			return
 		}
 		val, _ := service.AddCounter(m.ID, *m.Delta)
 
-		resp := models.Metrics{
+		resp := model.Metrics{
 			ID:    m.ID,
-			MType: models.Counter,
+			MType: model.Counter,
 			Delta: &val,
 		}
 		rw.Header().Set("Content-Type", "application/json")
@@ -133,7 +163,7 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-	case models.Gauge:
+	case model.Gauge:
 		if m.Value == nil {
 			http.Error(rw, "value required", http.StatusBadRequest)
 			return
@@ -143,9 +173,9 @@ func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		resp := models.Metrics{
+		resp := model.Metrics{
 			ID:    m.ID,
-			MType: models.Gauge,
+			MType: model.Gauge,
 			Value: m.Value,
 		}
 
@@ -173,7 +203,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	switch metricType {
-	case models.Counter:
+	case model.Counter:
 		val, err := strconv.ParseInt(metricValue, 10, 64)
 		if err != nil {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
@@ -181,7 +211,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 		service.AddCounter(metricName, val)
 
-	case models.Gauge:
+	case model.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
 		if err != nil {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
@@ -206,7 +236,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricName := chi.URLParam(r, "metric-name")
 
 	switch metricType {
-	case models.Counter:
+	case model.Counter:
 		value, ok, _ := service.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
@@ -214,7 +244,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
-	case models.Gauge:
+	case model.Gauge:
 		value, ok, _ := service.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
@@ -241,7 +271,7 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req models.Request
+	var req model.Request
 
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -254,29 +284,29 @@ func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resp models.Metrics
+	var resp model.Metrics
 
 	switch req.MType {
-	case models.Counter:
+	case model.Counter:
 		value, ok, _ := service.GetCounter(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
 		}
 
-		resp = models.Metrics{
+		resp = model.Metrics{
 			ID:    req.ID,
 			MType: req.MType,
 			Delta: &value,
 		}
-	case models.Gauge:
+	case model.Gauge:
 		value, ok, _ := service.GetGauge(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
 		}
 
-		resp = models.Metrics{
+		resp = model.Metrics{
 			ID:    req.ID,
 			MType: req.MType,
 			Value: &value,

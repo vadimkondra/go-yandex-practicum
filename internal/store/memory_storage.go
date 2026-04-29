@@ -1,8 +1,14 @@
 package store
 
+import (
+	models "go-yandex-practicum/internal/model"
+	"sync"
+)
+
 type MemStorage struct {
 	gauges   map[string]float64
 	counters map[string]int64
+	mu       sync.RWMutex
 }
 
 func NewMemoryStorage() *MemStorage {
@@ -46,4 +52,39 @@ func (s *MemStorage) Ping() error {
 
 func (s *MemStorage) Close() error {
 	return nil
+}
+
+func (s *MemStorage) UpdateBatch(metrics []models.Metrics) ([]models.Metrics, error) {
+
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+	updated := make([]models.Metrics, 0, len(metrics))
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+			s.gauges[metric.ID] = *metric.Value
+			value := s.gauges[metric.ID]
+			updated = append(updated, models.Metrics{
+				ID:    metric.ID,
+				MType: models.Gauge,
+				Value: &value,
+			})
+		case models.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+			s.counters[metric.ID] += *metric.Delta
+			delta := s.counters[metric.ID]
+			updated = append(updated, models.Metrics{
+				ID:    metric.ID,
+				MType: models.Counter,
+				Delta: &delta,
+			})
+		}
+	}
+	return updated, nil
 }
