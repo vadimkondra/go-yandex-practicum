@@ -3,11 +3,15 @@ package store
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
+	"go-yandex-practicum/internal/retry"
 	"log"
+	"strings"
 
 	"go-yandex-practicum/internal/model"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
@@ -60,7 +64,8 @@ func (s *PostgresStorage) createTables() error {
 }
 
 func (s *PostgresStorage) SetGauge(name string, value float64) error {
-	_, err := s.db.Exec(`
+	return retry.Do(func() error {
+		_, err := s.db.Exec(`
 		INSERT INTO metrics (id, type, value, delta)
 		VALUES ($1, $2, $3, NULL)
 		ON CONFLICT (id) DO UPDATE
@@ -69,22 +74,24 @@ func (s *PostgresStorage) SetGauge(name string, value float64) error {
 		    delta = NULL
 	`, name, model.Gauge, value)
 
-	return err
+		return err
+	}, isRetriablePostgresError)
 }
 
 func (s *PostgresStorage) AddCounter(name string, delta int64) (int64, error) {
 	var result int64
 
-	err := s.db.QueryRow(`
-		INSERT INTO metrics (id, type, delta, value)
-		VALUES ($1, $2, $3, NULL)
-		ON CONFLICT (id) DO UPDATE
-		SET type = EXCLUDED.type,
-		    delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta,
-		    value = NULL
-		RETURNING delta
-	`, name, model.Counter, delta).Scan(&result)
-
+	err := retry.Do(func() error {
+		return s.db.QueryRow(`
+			INSERT INTO metrics (id, type, delta, value)
+			VALUES ($1, $2, $3, NULL)
+			ON CONFLICT (id) DO UPDATE
+			SET type = EXCLUDED.type,
+			    delta = COALESCE(metrics.delta, 0) + EXCLUDED.delta,
+			    value = NULL
+			RETURNING delta
+		`, name, model.Counter, delta).Scan(&result)
+	}, isRetriablePostgresError)
 	return result, err
 }
 
@@ -183,13 +190,32 @@ func (s *PostgresStorage) GetAllCounters() (map[string]int64, error) {
 }
 
 func (s *PostgresStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+	var updated []model.Metrics
+
+	err := retry.Do(func() error {
+		result, err := s.updateBatchOnce(metrics)
+		if err != nil {
+			return err
+		}
+
+		updated = result
+		return nil
+	}, isRetriablePostgresError)
+
+	return updated, err
+}
+
+func (s *PostgresStorage) updateBatchOnce(metrics []model.Metrics) ([]model.Metrics, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 
+	committed := false
 	defer func() {
-		_ = tx.Rollback()
+		if !committed {
+			_ = tx.Rollback()
+		}
 	}()
 
 	updated := make([]model.Metrics, 0, len(metrics))
@@ -253,6 +279,20 @@ func (s *PostgresStorage) UpdateBatch(metrics []model.Metrics) ([]model.Metrics,
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	committed = true
 
 	return updated, nil
+}
+
+func isRetriablePostgresError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return strings.HasPrefix(pgErr.Code, "08")
+	}
+	return false
+
 }
