@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 )
 
-const Header = "HashSHA256"
+const HeaderName = "HashSHA256"
 
 func Calculate(data []byte, key string) string {
 	h := hmac.New(sha256.New, []byte(key))

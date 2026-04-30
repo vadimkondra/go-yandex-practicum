@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/service"
@@ -13,11 +14,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func ConfigServerRouter() http.Handler {
+func ConfigServerRouter(cfg config.ServerConfig) http.Handler {
 
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
 	r.Use(middleware.GzipMiddleware)
+	r.Use(middleware.HashMiddleware(cfg.Key))
 
 	r.Get("/", GetMetricsListHandler)
 
@@ -91,10 +93,12 @@ func MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Delta: &val,
 		}
 		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(rw).Encode(resp); err != nil {
 			http.Error(rw, "encode response error", http.StatusInternalServerError)
 			return
 		}
+		return
 
 	case model.Gauge:
 		if m.Value == nil {
@@ -113,16 +117,16 @@ func MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(rw).Encode(resp); err != nil {
 			http.Error(rw, "encode response error", http.StatusInternalServerError)
 			return
 		}
+		return
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
 		return
 	}
-
-	rw.WriteHeader(http.StatusOK)
 }
 
 func MetricHandler(rw http.ResponseWriter, r *http.Request) {

@@ -22,7 +22,7 @@ func main() {
 		}
 	}(storage)
 
-	r := handler.ConfigServerRouter()
+	r := handler.ConfigServerRouter(cfg)
 
 	_, port, err := net.SplitHostPort(cfg.ServerAddress)
 	if err != nil {
