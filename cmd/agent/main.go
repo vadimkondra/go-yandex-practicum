@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-yandex-practicum/internal/hash"
 	"go-yandex-practicum/internal/retry"
 	"io"
 	"log"
@@ -40,7 +41,7 @@ func main() {
 		case <-reportTicker.C:
 			// отправляем метрики на сервер
 			if pollCount > 0 {
-				err := sendMetrics(cfg.ServerAddress, client, metrics)
+				err := sendMetrics(cfg.ServerAddress, client, metrics, cfg.Key)
 				if err != nil {
 					log.Println("send metrics error:", err)
 				} else {
@@ -51,9 +52,9 @@ func main() {
 	}
 }
 
-func sendRequest(client *http.Client, url string, body []byte) error {
+func sendRequest(client *http.Client, url string, body []byte, key string) error {
 	return retry.Do(func() error {
-		return sendRequestOnce(client, url, body)
+		return sendRequestOnce(client, url, body, key)
 	}, isRetriableHTTPError)
 }
 
@@ -71,7 +72,7 @@ func isRetriableHTTPError(err error) bool {
 	return errors.As(err, &urlErr)
 }
 
-func sendRequestOnce(client *http.Client, url string, body []byte) error {
+func sendRequestOnce(client *http.Client, url string, body []byte, key string) error {
 	var buf bytes.Buffer
 
 	gz := gzip.NewWriter(&buf)
@@ -91,6 +92,10 @@ func sendRequestOnce(client *http.Client, url string, body []byte) error {
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
 
+	if key != "" {
+		req.Header.Set(hash.Header, hash.Calculate(body, key))
+	}
+
 	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
@@ -108,9 +113,16 @@ func sendRequestOnce(client *http.Client, url string, body []byte) error {
 		responseBody = gzReader
 	}
 
-	_, err = io.ReadAll(responseBody)
+	responseBytes, err := io.ReadAll(responseBody)
 	if err != nil {
 		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if key != "" {
+		responseHash := response.Header.Get(hash.Header)
+		if responseHash == "" || !hash.Check(responseBytes, key, responseHash) {
+			return fmt.Errorf("invalid response hash")
+		}
 	}
 
 	if response.StatusCode != http.StatusOK {
@@ -120,9 +132,9 @@ func sendRequestOnce(client *http.Client, url string, body []byte) error {
 	return nil
 }
 
-func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metrics) error {
+func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metrics, key string) error {
 	for _, metric := range metrics {
-		if err := sendMetric(serverAddress, client, metric); err != nil {
+		if err := sendMetric(serverAddress, client, metric, key); err != nil {
 			return err
 		}
 	}
@@ -130,7 +142,7 @@ func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metr
 	return nil
 }
 
-func sendMetric(serverAddress string, client *http.Client, metric model.Metrics) error {
+func sendMetric(serverAddress string, client *http.Client, metric model.Metrics, key string) error {
 	switch metric.MType {
 	case model.Gauge:
 		if metric.Value == nil {
@@ -153,7 +165,7 @@ func sendMetric(serverAddress string, client *http.Client, metric model.Metrics)
 
 	url := "http://" + serverAddress + "/update/"
 
-	return sendRequest(client, url, body)
+	return sendRequest(client, url, body, key)
 }
 
 func fillMetrics() []model.Metrics {
