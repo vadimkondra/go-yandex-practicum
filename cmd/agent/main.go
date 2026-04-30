@@ -1,33 +1,32 @@
 package main
 
 import (
-	"flag"
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
+	"go-yandex-practicum/internal/config"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
 	"runtime"
-	"strconv"
 	"time"
 
-	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/model"
 )
-
-var AppConfig config.AgentConfig
 
 var pollCount int64
 
 func main() {
-	parseFlags()
+	cfg := ParseFlags()
 
 	client := &http.Client{}
 
 	var metrics []models.Metrics
 
-	pollTicker := time.NewTicker(time.Duration(AppConfig.PollInterval) * time.Second)
-	reportTicker := time.NewTicker(time.Duration(AppConfig.ReportInterval) * time.Second)
+	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
 
 	for {
 		select {
@@ -38,7 +37,7 @@ func main() {
 		case <-reportTicker.C:
 			// отправляем метрики на сервер
 			if pollCount > 0 {
-				err := sendMetrics(client, metrics)
+				err := sendMetrics(cfg, client, metrics)
 				if err != nil {
 					log.Println("send metrics error:", err)
 				} else {
@@ -49,49 +48,51 @@ func main() {
 	}
 }
 
-func parseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
-	flag.IntVar(&AppConfig.PollInterval, "p", 2, "polling interval for collecting metrics")
-	flag.IntVar(&AppConfig.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
-
-	flag.Parse()
-
-	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-		AppConfig.ServerAddress = envRunAddr
-	}
-	if envRunReportInterval := os.Getenv("REPORT_INTERVAL"); envRunReportInterval != "" {
-		value, err := strconv.Atoi(envRunReportInterval)
-		if err != nil {
-			log.Fatal("invalid REPORT_INTERVAL:", err)
-		}
-
-		AppConfig.ReportInterval = value
-	}
-	if envRunPoolInterval := os.Getenv("POLL_INTERVAL"); envRunPoolInterval != "" {
-		value, err := strconv.Atoi(envRunPoolInterval)
-		if err != nil {
-			log.Fatal("invalid POLL_INTERVAL:", err)
-		}
-
-		AppConfig.PollInterval = value
-	}
-}
-
 func buildUpdateMetricURL(metricType string, metricNm string, metricVal string) string {
 	return "update/" + metricType + "/" + metricNm + "/" + metricVal
 }
 
-func sendRequest(client *http.Client, url string) error {
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+func sendRequest(client *http.Client, url string, body []byte) error {
+	var buf bytes.Buffer
+
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
+		return fmt.Errorf("gzip write request body: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("gzip close request body: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, &buf)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer response.Body.Close()
+
+	var responseBody io.Reader = response.Body
+	if response.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(response.Body)
+		if err != nil {
+			return fmt.Errorf("gzip read response body: %w", err)
+		}
+		defer gzReader.Close()
+
+		responseBody = gzReader
+	}
+
+	_, err = io.ReadAll(responseBody)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
 
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
@@ -100,9 +101,9 @@ func sendRequest(client *http.Client, url string) error {
 	return nil
 }
 
-func sendMetrics(client *http.Client, metrics []models.Metrics) error {
+func sendMetrics(cfg config.AgentConfig, client *http.Client, metrics []models.Metrics) error {
 	for _, metric := range metrics {
-		if err := sendMetric(client, metric); err != nil {
+		if err := sendMetric(cfg, client, metric); err != nil {
 			return err
 		}
 	}
@@ -110,29 +111,30 @@ func sendMetrics(client *http.Client, metrics []models.Metrics) error {
 	return nil
 }
 
-func sendMetric(client *http.Client, metric models.Metrics) error {
-	var metricValue string
-
+func sendMetric(cfg config.AgentConfig, client *http.Client, metric models.Metrics) error {
 	switch metric.MType {
 	case models.Gauge:
 		if metric.Value == nil {
 			return fmt.Errorf("gauge metric %q has nil value", metric.ID)
 		}
-		metricValue = strconv.FormatFloat(*metric.Value, 'f', -1, 64)
 
 	case models.Counter:
 		if metric.Delta == nil {
 			return fmt.Errorf("counter metric %q has nil delta", metric.ID)
 		}
-		metricValue = strconv.FormatInt(*metric.Delta, 10)
 
 	default:
 		return fmt.Errorf("unknown metric type %q", metric.MType)
 	}
 
-	url := "http://" + AppConfig.ServerAddress + "/" + buildUpdateMetricURL(metric.MType, metric.ID, metricValue)
+	body, err := json.Marshal(metric)
+	if err != nil {
+		return fmt.Errorf("marshal metric: %w", err)
+	}
 
-	return sendRequest(client, url)
+	url := "http://" + cfg.ServerAddress + "/update/"
+
+	return sendRequest(client, url, body)
 }
 
 func fillMetrics() []models.Metrics {

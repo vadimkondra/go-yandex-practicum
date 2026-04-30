@@ -1,78 +1,78 @@
 package main
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
+	"go-yandex-practicum/internal/middleware"
+	"go-yandex-practicum/internal/model"
+	"go-yandex-practicum/internal/service"
+	"go-yandex-practicum/internal/store"
 	"io"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
-
-	"go-yandex-practicum/internal/config"
-	"go-yandex-practicum/internal/model"
-	"go-yandex-practicum/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
-	parseFlags()
-	log.Println("server address:", AppConfig.ServerAddress)
+	config := ParseFlags()
 
-	log.Println("before router")
+	if config.Restore {
+		err := service.LoadMetricsFromFile(config.FileStorePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if config.StoreInterval != 0 {
+		go service.StoreMetrics(config.StoreInterval, config.FileStorePath)
+	}
+
+	if config.DatabaseDSN != "" {
+		store.InitDB(config.DatabaseDSN)
+		defer store.CloseDB()
+	}
+
 	r := ConfigServerRouter()
-	log.Println("after router")
 
-	log.Println("before listen")
-
-	_, port, err := net.SplitHostPort(AppConfig.ServerAddress)
+	_, port, err := net.SplitHostPort(config.ServerAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	addr := ":" + port
 
-	log.Println("listening on", addr)
-
 	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Fatal(err)
 	}
 }
 
-var AppConfig config.ServerConfig
-
-const (
-	metricTypeRouteName  = "metric-type"
-	metricNameRouteName  = "metric-name"
-	metricValueRouteName = "metric-value"
-)
-
-var storage repository.MetricsStorage = repository.NewMemStorage()
-
-func parseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
-
-	// парсим переданные серверу аргументы в зарегистрированные переменные
-	flag.Parse()
-
-	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-		AppConfig.ServerAddress = envRunAddr
-	}
-}
-
 func ConfigServerRouter() http.Handler {
+
 	r := chi.NewRouter()
+	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.GzipMiddleware)
 
 	r.Get("/", getMetricsListHandler)
 
-	r.Get("/value/{"+metricTypeRouteName+"}/{"+metricNameRouteName+"}", getMetricValueHandler)
+	r.Get("/ping", pingHandler)
+
+	r.Route("/value", func(r chi.Router) {
+		r.Post("/", getMetricValueJSONHandler)
+		r.Route("/{metric-type}", func(r chi.Router) {
+			r.Route("/{metric-name}", func(r chi.Router) {
+				r.Get("/", getMetricValueHandler)
+			})
+		})
+	})
 
 	r.Route("/update", func(r chi.Router) {
-		r.Route("/{"+metricTypeRouteName+"}", func(r chi.Router) {
-			r.Route("/{"+metricNameRouteName+"}", func(r chi.Router) {
-				r.Post("/{"+metricValueRouteName+"}", metricHandler)
+		r.Post("/", metricJSONHandler)
+		r.Route("/{metric-type}", func(r chi.Router) {
+			r.Route("/{metric-name}", func(r chi.Router) {
+				r.Post("/{metric-value}", metricHandler)
 			})
 		})
 	})
@@ -80,10 +80,85 @@ func ConfigServerRouter() http.Handler {
 	return r
 }
 
+func pingHandler(rw http.ResponseWriter, r *http.Request) {
+
+	if store.Ping() {
+		rw.WriteHeader(http.StatusOK)
+	} else {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func metricJSONHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(rw, "invalid Content-Type", http.StatusBadRequest)
+		return
+	}
+
+	var m models.Metrics
+
+	err := json.NewDecoder(r.Body).Decode(&m)
+	if err != nil {
+		http.Error(rw, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if m.ID == "" {
+		http.Error(rw, "metric name required", http.StatusBadRequest)
+		return
+	}
+
+	switch m.MType {
+	case models.Counter:
+		if m.Delta == nil {
+			http.Error(rw, "delta required", http.StatusBadRequest)
+			return
+		}
+		val := service.AddCounter(m.ID, *m.Delta)
+
+		resp := models.Metrics{
+			ID:    m.ID,
+			MType: models.Counter,
+			Delta: &val,
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			http.Error(rw, "encode response error", http.StatusInternalServerError)
+			return
+		}
+
+	case models.Gauge:
+		if m.Value == nil {
+			http.Error(rw, "value required", http.StatusBadRequest)
+			return
+		}
+		service.SetGauge(m.ID, *m.Value)
+
+		resp := models.Metrics{
+			ID:    m.ID,
+			MType: models.Gauge,
+			Value: m.Value,
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(resp); err != nil {
+			http.Error(rw, "encode response error", http.StatusInternalServerError)
+			return
+		}
+	default:
+		http.Error(rw, "unknown metric type", http.StatusBadRequest)
+		return
+	}
+
+	rw.WriteHeader(http.StatusOK)
+}
+
 func metricHandler(rw http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, metricTypeRouteName)
-	metricName := chi.URLParam(r, metricNameRouteName)
-	metricValue := chi.URLParam(r, metricValueRouteName)
+	metricType := chi.URLParam(r, "metric-type")
+	metricName := chi.URLParam(r, "metric-name")
+	metricValue := chi.URLParam(r, "metric-value")
 
 	if metricName == "" {
 		http.Error(rw, "metric name required", http.StatusNotFound)
@@ -97,7 +172,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		storage.AddCounter(metricName, val)
+		service.AddCounter(metricName, val)
 
 	case models.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -105,7 +180,7 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		storage.SetGauge(metricName, val)
+		service.SetGauge(metricName, val)
 
 	default:
 		http.Error(rw, "unknown metric type", http.StatusBadRequest)
@@ -116,12 +191,12 @@ func metricHandler(rw http.ResponseWriter, r *http.Request) {
 }
 
 func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, metricTypeRouteName)
-	metricName := chi.URLParam(r, metricNameRouteName)
+	metricType := chi.URLParam(r, "metric-type")
+	metricName := chi.URLParam(r, "metric-name")
 
 	switch metricType {
 	case models.Counter:
-		value, ok := storage.GetCounter(metricName)
+		value, ok := service.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -129,7 +204,7 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case models.Gauge:
-		value, ok := storage.GetGauge(metricName)
+		value, ok := service.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -142,15 +217,81 @@ func getMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func errorResponse(rw http.ResponseWriter, status int, msg string) {
+	rw.Header().Set("Content-Type", "application/json")
+	http.Error(rw, msg, status)
+}
+
+func getMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		errorResponse(rw, http.StatusNotFound, "invalid Content-Type")
+		return
+	}
+
+	var req models.Request
+
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		errorResponse(rw, http.StatusNotFound, "invalid JSON")
+		return
+	}
+
+	if req.ID == "" {
+		errorResponse(rw, http.StatusNotFound, "metric name required")
+		return
+	}
+
+	var resp models.Metrics
+
+	switch req.MType {
+	case models.Counter:
+		value, ok := service.GetCounter(req.ID)
+		if !ok {
+			errorResponse(rw, http.StatusNotFound, "unknown metric name")
+			return
+		}
+
+		resp = models.Metrics{
+			ID:    req.ID,
+			MType: req.MType,
+			Delta: &value,
+		}
+	case models.Gauge:
+		value, ok := service.GetGauge(req.ID)
+		if !ok {
+			errorResponse(rw, http.StatusNotFound, "unknown metric name")
+			return
+		}
+
+		resp = models.Metrics{
+			ID:    req.ID,
+			MType: req.MType,
+			Value: &value,
+		}
+	default:
+		errorResponse(rw, http.StatusNotFound, "unknown metric type")
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(rw).Encode(resp); err != nil {
+		errorResponse(rw, http.StatusInternalServerError, "encode response error")
+		return
+	}
+}
+
 func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
+	rw.Header().Set("Content-Type", "application/json")
 	rw.Write([]byte(metricValue))
 }
 
 func getMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
-	buildMetricsListResponse(storage, rw)
+	buildMetricsListResponse(rw)
 }
 
-func buildMetricsListResponse(storage repository.MetricsStorage, rw http.ResponseWriter) {
+func buildMetricsListResponse(rw http.ResponseWriter) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(http.StatusOK)
 
@@ -158,13 +299,13 @@ func buildMetricsListResponse(storage repository.MetricsStorage, rw http.Respons
 	io.WriteString(rw, "<h1>Metrics</h1>")
 
 	io.WriteString(rw, "<h2>Gauges</h2><ul>")
-	for name, value := range storage.GetAllGauges() {
+	for name, value := range service.GetAllGauges() {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %v</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")
 
 	io.WriteString(rw, "<h2>Counters</h2><ul>")
-	for name, value := range storage.GetAllCounters() {
+	for name, value := range service.GetAllCounters() {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %d</li>", name, value))
 	}
 	io.WriteString(rw, "</ul>")

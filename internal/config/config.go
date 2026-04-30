@@ -8,4 +8,8 @@ type AgentConfig struct {
 
 type ServerConfig struct {
 	ServerAddress string
+	StoreInterval int
+	FileStorePath string
+	Restore       bool
+	DatabaseDSN   string
 }
