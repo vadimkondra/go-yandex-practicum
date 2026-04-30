@@ -14,7 +14,7 @@ func ParseFlags() config.ServerConfig {
 	flag.IntVar(&cfg.StoreInterval, "i", 300, "interval in seconds between metrics store")
 	flag.StringVar(&cfg.FileStorePath, "f", "./metric-data", "path to store data")
 	flag.BoolVar(&cfg.Restore, "r", false, "restore metric data")
-	flag.StringVar(&cfg.DatabaseDsn, "d", "", "database dsn")
+	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database dsn")
 
 	flag.Parse()
 
@@ -23,7 +23,7 @@ func ParseFlags() config.ServerConfig {
 	}
 
 	if dataBaseDsn := os.Getenv("DATABASE_DSN"); dataBaseDsn != "" {
-		cfg.DatabaseDsn = dataBaseDsn
+		cfg.DatabaseDSN = dataBaseDsn
 	}
 
 	if storeInterval := os.Getenv("STORE_INTERVAL"); storeInterval != "" {
