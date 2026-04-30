@@ -326,5 +326,6 @@ func errorResponse(rw http.ResponseWriter, status int, msg string) {
 
 func writeMetricValueResponse(rw http.ResponseWriter, metricValue string) {
 	rw.Header().Set("Content-Type", "application/json")
-	rw.Write([]byte(metricValue))
+	rw.WriteHeader(http.StatusOK)
+	_, _ = rw.Write([]byte(metricValue))
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 
 	"go-yandex-practicum/internal/hash"
 )
@@ -25,12 +26,12 @@ func (w *hashResponseWriter) Write(data []byte) (int, error) {
 func HashMiddleware(key string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if key == "" {
+			if key == "" || key == "none" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			if shouldCheckRequestHash(r) {
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
 					http.Error(w, "read body error", http.StatusBadRequest)
@@ -61,4 +62,13 @@ func HashMiddleware(key string) func(http.Handler) http.Handler {
 			_, _ = w.Write(responseBody)
 		})
 	}
+}
+
+func shouldCheckRequestHash(r *http.Request) bool {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		return false
+	}
+
+	return strings.HasPrefix(r.URL.Path, "/update/") ||
+		strings.HasPrefix(r.URL.Path, "/updates/")
 }
