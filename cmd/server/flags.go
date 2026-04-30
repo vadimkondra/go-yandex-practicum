@@ -2,46 +2,49 @@ package main
 
 import (
 	"flag"
+	"go-yandex-practicum/internal/config"
 	"os"
 	"strconv"
 )
 
-func ParseFlags() {
-	flag.StringVar(&AppConfig.ServerAddress, "a", "localhost:8080", "address and port to run server")
-	flag.IntVar(&AppConfig.StoreInterval, "i", 300, "interval in seconds between metrics store")
-	flag.StringVar(&AppConfig.FileStorePath, "f", "./metric-data", "path to store data")
-	flag.BoolVar(&AppConfig.Restore, "r", false, "restore metric data")
-	flag.StringVar(&AppConfig.DatabaseDsn, "d", "", "database dsn")
+func ParseFlags() config.ServerConfig {
+	cfg := config.ServerConfig{}
+
+	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "address and port to run server")
+	flag.IntVar(&cfg.StoreInterval, "i", 300, "interval in seconds between metrics store")
+	flag.StringVar(&cfg.FileStorePath, "f", "./metric-data", "path to store data")
+	flag.BoolVar(&cfg.Restore, "r", false, "restore metric data")
+	flag.StringVar(&cfg.DatabaseDsn, "d", "", "database dsn")
 
 	flag.Parse()
 
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
-		AppConfig.ServerAddress = envRunAddr
+		cfg.ServerAddress = envRunAddr
 	}
 
 	if dataBaseDsn := os.Getenv("DATABASE_DSN"); dataBaseDsn != "" {
-		AppConfig.DatabaseDsn = dataBaseDsn
+		cfg.DatabaseDsn = dataBaseDsn
 	}
-	//AppConfig.DatabaseDsn = "postgres://metrics:metrics@localhost:5435/metrics?sslmode=disable"
 
 	if storeInterval := os.Getenv("STORE_INTERVAL"); storeInterval != "" {
 		parsedStoreInterval, err := strconv.Atoi(storeInterval)
 
 		if err == nil {
-			AppConfig.StoreInterval = parsedStoreInterval
+			cfg.StoreInterval = parsedStoreInterval
 		}
 	}
 
 	if filePath := os.Getenv("FILE_STORAGE_PATH"); filePath != "" {
-		AppConfig.FileStorePath = filePath
+		cfg.FileStorePath = filePath
 	}
 
 	if restore := os.Getenv("RESTORE"); restore != "" {
 		parsedRestore, err := strconv.ParseBool(restore)
 
 		if err == nil {
-			AppConfig.Restore = parsedRestore
+			cfg.Restore = parsedRestore
 		}
 	}
 
+	return cfg
 }

@@ -16,23 +16,20 @@ import (
 	"runtime"
 	"time"
 
-	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/model"
 )
-
-var AppConfig config.AgentConfig
 
 var pollCount int64
 
 func main() {
-	ParseFlags()
+	cfg := ParseFlags()
 
 	client := &http.Client{}
 
 	var metrics []model.Metrics
 
-	pollTicker := time.NewTicker(time.Duration(AppConfig.PollInterval) * time.Second)
-	reportTicker := time.NewTicker(time.Duration(AppConfig.ReportInterval) * time.Second)
+	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
+	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
 
 	for {
 		select {
@@ -43,7 +40,7 @@ func main() {
 		case <-reportTicker.C:
 			// отправляем метрики на сервер
 			if pollCount > 0 {
-				err := sendMetrics(client, metrics)
+				err := sendMetrics(cfg.ServerAddress, client, metrics)
 				if err != nil {
 					log.Println("send metrics error:", err)
 				} else {
@@ -55,11 +52,9 @@ func main() {
 }
 
 func sendRequest(client *http.Client, url string, body []byte) error {
-
 	return retry.Do(func() error {
 		return sendRequestOnce(client, url, body)
 	}, isRetriableHTTPError)
-
 }
 
 func isRetriableHTTPError(err error) bool {
@@ -125,9 +120,9 @@ func sendRequestOnce(client *http.Client, url string, body []byte) error {
 	return nil
 }
 
-func sendMetrics(client *http.Client, metrics []model.Metrics) error {
+func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metrics) error {
 	for _, metric := range metrics {
-		if err := sendMetric(client, metric); err != nil {
+		if err := sendMetric(serverAddress, client, metric); err != nil {
 			return err
 		}
 	}
@@ -135,7 +130,7 @@ func sendMetrics(client *http.Client, metrics []model.Metrics) error {
 	return nil
 }
 
-func sendMetric(client *http.Client, metric model.Metrics) error {
+func sendMetric(serverAddress string, client *http.Client, metric model.Metrics) error {
 	switch metric.MType {
 	case model.Gauge:
 		if metric.Value == nil {
@@ -156,7 +151,7 @@ func sendMetric(client *http.Client, metric model.Metrics) error {
 		return fmt.Errorf("marshal metric: %w", err)
 	}
 
-	url := "http://" + AppConfig.ServerAddress + "/update/"
+	url := "http://" + serverAddress + "/update/"
 
 	return sendRequest(client, url, body)
 }

@@ -10,18 +10,21 @@ import (
 	"net/http"
 )
 
-var AppConfig config.ServerConfig
-
 func main() {
-	ParseFlags()
+	cfg := ParseFlags()
 
-	storage := InitStorage()
+	storage := InitStorage(cfg)
 
-	defer storage.Close()
+	defer func(storage store.Storage) {
+		err := storage.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(storage)
 
 	r := handler.ConfigServerRouter()
 
-	_, port, err := net.SplitHostPort(AppConfig.ServerAddress)
+	_, port, err := net.SplitHostPort(cfg.ServerAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,8 +36,8 @@ func main() {
 	}
 }
 
-func InitStorage() store.Storage {
-	storage, err := store.NewStorage(AppConfig)
+func InitStorage(cfg config.ServerConfig) store.Storage {
+	storage, err := store.NewStorage(cfg)
 
 	if err != nil {
 		log.Fatal(err)
