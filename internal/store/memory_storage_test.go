@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
 
 func TestMemStorageSetAndGetGauge(t *testing.T) {
 	storage := NewMemoryStorage()
@@ -165,6 +168,122 @@ func TestMemStorageGetAllCounters(t *testing.T) {
 
 	if counters["RetryCount"] != 5 {
 		t.Errorf("expected RetryCount 5, got %d", counters["RetryCount"])
+	}
+}
+
+func TestMemStorageConcurrentCounterUpdates(t *testing.T) {
+	storage := NewMemoryStorage()
+
+	const goroutines = 100
+	const incrementsPerGoroutine = 100
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+
+			for j := 0; j < incrementsPerGoroutine; j++ {
+				if _, err := storage.AddCounter("PollCount", 1); err != nil {
+					t.Errorf("AddCounter() error = %v", err)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	got, ok, err := storage.GetCounter("PollCount")
+	if err != nil {
+		t.Fatalf("GetCounter() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected counter to exist")
+	}
+
+	expected := int64(goroutines * incrementsPerGoroutine)
+	if got != expected {
+		t.Fatalf("expected counter value %d, got %d", expected, got)
+	}
+}
+
+func TestMemStorageConcurrentReadWrite(t *testing.T) {
+	storage := NewMemoryStorage()
+
+	const goroutines = 50
+	const operationsPerGoroutine = 100
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines * 2)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+
+			for j := 0; j < operationsPerGoroutine; j++ {
+				if err := storage.SetGauge("Alloc", float64(j)); err != nil {
+					t.Errorf("SetGauge() error = %v", err)
+				}
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			for j := 0; j < operationsPerGoroutine; j++ {
+				_, _, err := storage.GetGauge("Alloc")
+				if err != nil {
+					t.Errorf("GetGauge() error = %v", err)
+				}
+
+				_, err = storage.GetAllGauges()
+				if err != nil {
+					t.Errorf("GetAllGauges() error = %v", err)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestMemStorageGetAllGaugesReturnsCopy(t *testing.T) {
+	storage := NewMemoryStorage()
+
+	if err := storage.SetGauge("Alloc", 123.45); err != nil {
+		t.Fatalf("SetGauge() error = %v", err)
+	}
+
+	gauges, err := storage.GetAllGauges()
+	if err != nil {
+		t.Fatalf("GetAllGauges() error = %v", err)
+	}
+
+	gauges["Alloc"] = 999
+	gauges["Injected"] = 1
+
+	got, ok, err := storage.GetGauge("Alloc")
+	if err != nil {
+		t.Fatalf("GetGauge() error = %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected gauge to exist")
+	}
+
+	if got != 123.45 {
+		t.Fatalf("expected original gauge value 123.45, got %v", got)
+	}
+
+	_, ok, err = storage.GetGauge("Injected")
+	if err != nil {
+		t.Fatalf("GetGauge() error = %v", err)
+	}
+
+	if ok {
+		t.Fatal("expected injected gauge to be absent")
 	}
 }
 

@@ -22,7 +22,8 @@ func main() {
 		}
 	}(storage)
 
-	r := handler.ConfigServerRouter()
+	metricsService := service.NewMetricsService(storage)
+	r := handler.ConfigServerRouter(metricsService)
 
 	_, port, err := net.SplitHostPort(cfg.ServerAddress)
 	if err != nil {
@@ -42,8 +43,6 @@ func InitStorage(cfg config.ServerConfig) store.Storage {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	service.SetStorage(storage)
 
 	return storage
 }
