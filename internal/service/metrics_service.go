@@ -1,106 +1,88 @@
 package service
 
 import (
-	"encoding/json"
-	models "go-yandex-practicum/internal/model"
-	"go-yandex-practicum/internal/repository"
-	"log"
-	"os"
-	"time"
+	"go-yandex-practicum/internal/model"
+	"go-yandex-practicum/internal/store"
 )
 
-var storage repository.MetricsStorage = repository.NewMemStorage()
-
-func SetGauge(metricName string, metricValue float64) {
-	storage.SetGauge(metricName, metricValue)
+type MetricsService struct {
+	storage store.Storage
 }
 
-func AddCounter(metricName string, metricValue int64) int64 {
-	return storage.AddCounter(metricName, metricValue)
+func NewMetricsService(storage store.Storage) *MetricsService {
+	return &MetricsService{storage: storage}
 }
 
-func GetGauge(metricName string) (float64, bool) {
-	return storage.GetGauge(metricName)
+func (s *MetricsService) SetGauge(metricName string, metricValue float64) error {
+	return s.storage.SetGauge(metricName, metricValue)
 }
 
-func GetCounter(metricName string) (int64, bool) {
-	return storage.GetCounter(metricName)
+func (s *MetricsService) AddCounter(metricName string, metricValue int64) (int64, error) {
+	return s.storage.AddCounter(metricName, metricValue)
 }
 
-func GetAllGauges() map[string]float64 {
-	return storage.GetAllGauges()
+func (s *MetricsService) GetGauge(metricName string) (float64, bool, error) {
+	return s.storage.GetGauge(metricName)
 }
 
-func GetAllCounters() map[string]int64 {
-	return storage.GetAllCounters()
+func (s *MetricsService) GetCounter(metricName string) (int64, bool, error) {
+	return s.storage.GetCounter(metricName)
 }
 
-func StoreMetrics(storeInterval int, filePath string) {
-	ticker := time.NewTicker(time.Duration(storeInterval) * time.Second)
-
-	defer ticker.Stop()
-	for range ticker.C {
-		if err := saveMetricsToFile(filePath); err != nil {
-			log.Print("saveMetricsToFile error", err)
-		}
-	}
+func (s *MetricsService) GetAllGauges() (map[string]float64, error) {
+	return s.storage.GetAllGauges()
 }
 
-func saveMetricsToFile(filePath string) error {
-
-	metrics := make([]models.Metrics, 0)
-	for name, value := range storage.GetAllGauges() {
-		v := value
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Gauge,
-			Value: &v,
-		})
-	}
-	for name, value := range storage.GetAllCounters() {
-		v := value
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Counter,
-			Delta: &v,
-		})
-	}
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return json.NewEncoder(file).Encode(metrics)
-
+func (s *MetricsService) GetAllCounters() (map[string]int64, error) {
+	return s.storage.GetAllCounters()
 }
 
-func LoadMetricsFromFile(filePath string) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer file.Close()
-
-	var metrics []models.Metrics
-	if err := json.NewDecoder(file).Decode(&metrics); err != nil {
-		return err
+func (s *MetricsService) Ping() (bool, error) {
+	if err := s.storage.Ping(); err != nil {
+		return false, err
 	}
 
-	for _, metric := range metrics {
-		switch metric.MType {
-		case models.Gauge:
-			if metric.Value != nil {
-				storage.SetGauge(metric.ID, *metric.Value)
-			}
-		case models.Counter:
-			if metric.Delta != nil {
-				storage.AddCounter(metric.ID, *metric.Delta)
-			}
-		}
-	}
+	return true, nil
+}
 
-	return nil
+func (s *MetricsService) UpdateMetricsBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+	return s.storage.UpdateBatch(metrics)
+}
+
+var service = NewMetricsService(store.NewMemoryStorage())
+
+func SetStorage(s store.Storage) {
+	service = NewMetricsService(s)
+}
+
+func SetGauge(metricName string, metricValue float64) error {
+	return service.SetGauge(metricName, metricValue)
+}
+
+func AddCounter(metricName string, metricValue int64) (int64, error) {
+	return service.AddCounter(metricName, metricValue)
+}
+
+func GetGauge(metricName string) (float64, bool, error) {
+	return service.GetGauge(metricName)
+}
+
+func GetCounter(metricName string) (int64, bool, error) {
+	return service.GetCounter(metricName)
+}
+
+func GetAllGauges() (map[string]float64, error) {
+	return service.GetAllGauges()
+}
+
+func GetAllCounters() (map[string]int64, error) {
+	return service.GetAllCounters()
+}
+
+func Ping() (bool, error) {
+	return service.Ping()
+}
+
+func UpdateMetricsBatch(metrics []model.Metrics) ([]model.Metrics, error) {
+	return service.UpdateMetricsBatch(metrics)
 }
