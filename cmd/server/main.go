@@ -44,7 +44,5 @@ func InitStorage(cfg config.ServerConfig) store.Storage {
 		log.Fatal(err)
 	}
 
-	service.SetStorage(storage)
-
 	return storage
 }

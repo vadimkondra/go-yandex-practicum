@@ -117,7 +117,7 @@ func (h *ServerHandler) MetricJSONHandler(rw http.ResponseWriter, r *http.Reques
 		}
 		err := h.service.SetGauge(m.ID, *m.Value)
 		if err != nil {
-			return
+			rw.WriteHeader(http.StatusInternalServerError)
 		}
 
 		resp := model.Metrics{

@@ -103,7 +103,7 @@ func (s *PostgresStorage) GetGauge(name string) (float64, bool, error) {
 		FROM metrics
 		WHERE id = $1 AND type = $2
 	`, name, model.Gauge).Scan(&value)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {
@@ -121,7 +121,7 @@ func (s *PostgresStorage) GetCounter(name string) (int64, bool, error) {
 		FROM metrics
 		WHERE id = $1 AND type = $2
 	`, name, model.Counter).Scan(&delta)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {

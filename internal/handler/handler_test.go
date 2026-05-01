@@ -33,7 +33,6 @@ func setupRouter() http.Handler {
 }
 
 func TestMetricHandler_GaugeValid(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/123.45", nil)
@@ -47,7 +46,6 @@ func TestMetricHandler_GaugeValid(t *testing.T) {
 }
 
 func TestMetricHandler_GaugeInvalid(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/Alloc/not-a-float", nil)
@@ -61,7 +59,6 @@ func TestMetricHandler_GaugeInvalid(t *testing.T) {
 }
 
 func TestMetricHandler_CounterValid(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/42", nil)
@@ -75,7 +72,6 @@ func TestMetricHandler_CounterValid(t *testing.T) {
 }
 
 func TestMetricHandler_CounterInvalid(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/12.34", nil)
@@ -89,7 +85,6 @@ func TestMetricHandler_CounterInvalid(t *testing.T) {
 }
 
 func TestMetricHandler_UnknownMetricType(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/update/unknown/AnyMetric/123", nil)
@@ -103,7 +98,6 @@ func TestMetricHandler_UnknownMetricType(t *testing.T) {
 }
 
 func TestMetricHandler_WithoutMetricName_ReturnsNotFound(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge//123", nil)
@@ -117,7 +111,6 @@ func TestMetricHandler_WithoutMetricName_ReturnsNotFound(t *testing.T) {
 }
 
 func TestMetricHandler_WrongMethod_ReturnsMethodNotAllowed(t *testing.T) {
-	service.SetStorage(store.NewMemoryStorage())
 	router := setupRouter()
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/Alloc/123.45", nil)
