@@ -14,43 +14,53 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func ConfigServerRouter(cfg config.ServerConfig) http.Handler {
+type ServerHandler struct {
+	service *service.MetricsService
+	cfg     config.ServerConfig
+}
+
+func NewServerHandler(service *service.MetricsService, cfg config.ServerConfig) *ServerHandler {
+	return &ServerHandler{service: service, cfg: cfg}
+}
+
+func ConfigServerRouter(service *service.MetricsService, cfg config.ServerConfig) http.Handler {
+	h := NewServerHandler(service, cfg)
 
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
-	r.Use(middleware.GzipMiddleware)
 	r.Use(middleware.HashMiddleware(cfg.Key))
+	r.Use(middleware.GzipMiddleware)
 
-	r.Get("/", GetMetricsListHandler)
+	r.Get("/", h.GetMetricsListHandler)
 
-	r.Get("/ping", PingHandler)
+	r.Get("/ping", h.PingHandler)
 
 	r.Route("/value", func(r chi.Router) {
-		r.Post("/", GetMetricValueJSONHandler)
+		r.Post("/", h.GetMetricValueJSONHandler)
 		r.Route("/{metric-type}", func(r chi.Router) {
 			r.Route("/{metric-name}", func(r chi.Router) {
-				r.Get("/", GetMetricValueHandler)
+				r.Get("/", h.GetMetricValueHandler)
 			})
 		})
 	})
 
 	r.Route("/update", func(r chi.Router) {
-		r.Post("/", MetricJSONHandler)
+		r.Post("/", h.MetricJSONHandler)
 		r.Route("/{metric-type}", func(r chi.Router) {
 			r.Route("/{metric-name}", func(r chi.Router) {
-				r.Post("/{metric-value}", MetricHandler)
+				r.Post("/{metric-value}", h.MetricHandler)
 			})
 		})
 	})
 
-	r.Post("/updates/", MetricsHandler)
+	r.Post("/updates/", h.MetricsHandler)
 
 	return r
 }
 
-func PingHandler(rw http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) PingHandler(rw http.ResponseWriter, r *http.Request) {
 
-	result, err := service.Ping()
+	result, err := h.service.Ping()
 	if err != nil || !result {
 		rw.WriteHeader(http.StatusInternalServerError)
 	} else {
@@ -58,7 +68,7 @@ func PingHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -85,7 +95,7 @@ func MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "delta required", http.StatusBadRequest)
 			return
 		}
-		val, _ := service.AddCounter(m.ID, *m.Delta)
+		val, _ := h.service.AddCounter(m.ID, *m.Delta)
 
 		resp := model.Metrics{
 			ID:    m.ID,
@@ -105,7 +115,7 @@ func MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "value required", http.StatusBadRequest)
 			return
 		}
-		err := service.SetGauge(m.ID, *m.Value)
+		err := h.service.SetGauge(m.ID, *m.Value)
 		if err != nil {
 			return
 		}
@@ -129,7 +139,7 @@ func MetricJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func MetricHandler(rw http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) MetricHandler(rw http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, "metric-type")
 	metricName := chi.URLParam(r, "metric-name")
 	metricValue := chi.URLParam(r, "metric-value")
@@ -146,7 +156,7 @@ func MetricHandler(rw http.ResponseWriter, r *http.Request) {
 			http.Error(rw, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		service.AddCounter(metricName, val)
+		h.service.AddCounter(metricName, val)
 
 	case model.Gauge:
 		val, err := strconv.ParseFloat(metricValue, 64)
@@ -155,7 +165,7 @@ func MetricHandler(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = service.SetGauge(metricName, val)
+		err = h.service.SetGauge(metricName, val)
 		if err != nil {
 			return
 		}
@@ -168,13 +178,13 @@ func MetricHandler(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
-func GetMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) GetMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, "metric-type")
 	metricName := chi.URLParam(r, "metric-name")
 
 	switch metricType {
 	case model.Counter:
-		value, ok, _ := service.GetCounter(metricName)
+		value, ok, _ := h.service.GetCounter(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -182,7 +192,7 @@ func GetMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 
 		writeMetricValueResponse(rw, strconv.FormatInt(value, 10))
 	case model.Gauge:
-		value, ok, _ := service.GetGauge(metricName)
+		value, ok, _ := h.service.GetGauge(metricName)
 		if !ok {
 			http.Error(rw, "unknown metric name", http.StatusNotFound)
 			return
@@ -195,7 +205,7 @@ func GetMetricValueHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) GetMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -220,7 +230,7 @@ func GetMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 
 	switch req.MType {
 	case model.Counter:
-		value, ok, _ := service.GetCounter(req.ID)
+		value, ok, _ := h.service.GetCounter(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
@@ -232,7 +242,7 @@ func GetMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 			Delta: &value,
 		}
 	case model.Gauge:
-		value, ok, _ := service.GetGauge(req.ID)
+		value, ok, _ := h.service.GetGauge(req.ID)
 		if !ok {
 			errorResponse(rw, http.StatusNotFound, "unknown metric name")
 			return
@@ -255,11 +265,11 @@ func GetMetricValueJSONHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
-	buildMetricsListResponse(rw)
+func (h *ServerHandler) GetMetricsListHandler(rw http.ResponseWriter, r *http.Request) {
+	h.buildMetricsListResponse(rw)
 }
 
-func MetricsHandler(rw http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) MetricsHandler(rw http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Header.Get("Content-Type") != "application/json" {
@@ -278,7 +288,7 @@ func MetricsHandler(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedMetrics, err := service.UpdateMetricsBatch(metrics)
+	updatedMetrics, err := h.service.UpdateMetricsBatch(metrics)
 	if err != nil {
 		http.Error(rw, "update metrics batch error", http.StatusInternalServerError)
 		return
@@ -293,7 +303,7 @@ func MetricsHandler(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func buildMetricsListResponse(rw http.ResponseWriter) {
+func (h *ServerHandler) buildMetricsListResponse(rw http.ResponseWriter) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.WriteHeader(http.StatusOK)
 
@@ -302,7 +312,7 @@ func buildMetricsListResponse(rw http.ResponseWriter) {
 
 	io.WriteString(rw, "<h2>Gauges</h2><ul>")
 
-	gauges, _ := service.GetAllGauges()
+	gauges, _ := h.service.GetAllGauges()
 	for name, value := range gauges {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %v</li>", name, value))
 	}
@@ -310,7 +320,7 @@ func buildMetricsListResponse(rw http.ResponseWriter) {
 
 	io.WriteString(rw, "<h2>Counters</h2><ul>")
 
-	counters, _ := service.GetAllCounters()
+	counters, _ := h.service.GetAllCounters()
 	for name, value := range counters {
 		io.WriteString(rw, fmt.Sprintf("<li>%s: %d</li>", name, value))
 	}

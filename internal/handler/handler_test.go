@@ -1,7 +1,7 @@
-package main
+package handler
 
 import (
-	"go-yandex-practicum/internal/handler"
+	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/service"
 	"go-yandex-practicum/internal/store"
 	"net/http"
@@ -12,12 +12,19 @@ import (
 )
 
 func setupRouter() http.Handler {
+	cfg := &config.ServerConfig{
+		Key: "test-secret-key",
+	}
+	storage := store.NewMemoryStorage()
+	metricsService := service.NewMetricsService(storage)
+	h := NewServerHandler(metricsService, *cfg)
+
 	r := chi.NewRouter()
 
 	r.Route("/update", func(r chi.Router) {
 		r.Route("/{metric-type}", func(r chi.Router) {
 			r.Route("/{metric-name}", func(r chi.Router) {
-				r.Post("/{metric-value}", handler.MetricHandler)
+				r.Post("/{metric-value}", h.MetricHandler)
 			})
 		})
 	})
