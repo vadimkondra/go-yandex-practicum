@@ -93,7 +93,7 @@ func sendRequestOnce(client *http.Client, url string, body []byte, key string) e
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	if key != "" {
-		req.Header.Set(hash.HeaderName, hash.Calculate(body, key))
+		req.Header.Set(hash.HeaderName, hash.Calculate(buf.Bytes(), key))
 	}
 
 	response, err := client.Do(req)
