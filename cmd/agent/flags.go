@@ -15,6 +15,7 @@ func ParseFlags() config.AgentConfig {
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "address and port to run server")
 	flag.IntVar(&cfg.PollInterval, "p", 2, "polling interval for collecting metrics")
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
+	flag.StringVar(&cfg.Key, "k", "", "hash key")
 
 	flag.Parse()
 
@@ -36,6 +37,10 @@ func ParseFlags() config.AgentConfig {
 		}
 
 		cfg.PollInterval = value
+	}
+
+	if envRunKey := os.Getenv("KEY"); envRunKey != "" {
+		cfg.Key = envRunKey
 	}
 
 	return cfg
