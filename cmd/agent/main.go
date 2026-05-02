@@ -17,6 +17,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
+
 	"go-yandex-practicum/internal/model"
 )
 
@@ -24,30 +27,69 @@ var pollCount int64
 
 func main() {
 	cfg := ParseFlags()
+	if cfg.RateLimit <= 0 {
+		cfg.RateLimit = 1
+	}
 
 	client := &http.Client{}
+	metricsCh := make(chan model.Metrics, cfg.RateLimit*10)
 
-	var metrics []model.Metrics
+	for i := 0; i < cfg.RateLimit; i++ {
+		go sendWorker(cfg.ServerAddress, client, metricsCh, cfg.Key)
+	}
 
-	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
-	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+	go collectRuntimeMetrics(cfg.PollInterval, metricsCh)
+	go collectPSUtilMetrics(cfg.PollInterval, metricsCh)
 
-	for {
-		select {
-		case <-pollTicker.C:
-			// обновляем метрики runtime
-			metrics = fillMetrics()
+	select {}
+}
 
-		case <-reportTicker.C:
-			// отправляем метрики на сервер
-			if pollCount > 0 {
-				err := sendMetrics(cfg.ServerAddress, client, metrics, cfg.Key)
-				if err != nil {
-					log.Println("send metrics error:", err)
-				} else {
-					pollCount = 0
-				}
-			}
+func sendWorker(serverAddress string, client *http.Client, metricsCh <-chan model.Metrics, key string) {
+	for metric := range metricsCh {
+		if err := sendMetric(serverAddress, client, metric, key); err != nil {
+			log.Println("send metric error:", err)
+		}
+	}
+}
+
+func collectRuntimeMetrics(pollInterval int, metricsCh chan<- model.Metrics) {
+	pollTicker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+	defer pollTicker.Stop()
+
+	for range pollTicker.C {
+		metrics := fillMetrics()
+		for _, metric := range metrics {
+			metricsCh <- metric
+		}
+	}
+}
+
+func collectPSUtilMetrics(pollInterval int, metricsCh chan<- model.Metrics) {
+	pollTicker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+	defer pollTicker.Stop()
+
+	for range pollTicker.C {
+		vmStat, err := mem.VirtualMemory()
+		if err != nil {
+			log.Println("collect memory metrics error:", err)
+			continue
+		}
+
+		totalMemory := float64(vmStat.Total)
+		freeMemory := float64(vmStat.Free)
+
+		metricsCh <- model.Metrics{ID: "TotalMemory", MType: model.Gauge, Value: &totalMemory}
+		metricsCh <- model.Metrics{ID: "FreeMemory", MType: model.Gauge, Value: &freeMemory}
+
+		cpuPercentages, err := cpu.Percent(0, true)
+		if err != nil {
+			log.Println("collect cpu metrics error:", err)
+			continue
+		}
+
+		for i, cpuValue := range cpuPercentages {
+			value := cpuValue
+			metricsCh <- model.Metrics{ID: fmt.Sprintf("CPUutilization%d", i+1), MType: model.Gauge, Value: &value}
 		}
 	}
 }
