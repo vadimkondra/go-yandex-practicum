@@ -3,7 +3,6 @@ package middleware
 import (
 	"bytes"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -34,14 +33,6 @@ func HashMiddleware(key string) func(http.Handler) http.Handler {
 
 			if shouldCheckRequestHash(r) {
 				body, err := io.ReadAll(r.Body)
-				log.Printf(
-					"HASH CHECK path=%s content-encoding=%q hash=%q body-len=%d body-prefix=%q",
-					r.URL.Path,
-					r.Header.Get("Content-Encoding"),
-					r.Header.Get(hash.HeaderName),
-					len(body),
-					string(body[:min(len(body), 80)]),
-				)
 				if err != nil {
 					http.Error(w, "read body error", http.StatusBadRequest)
 					return
@@ -49,7 +40,7 @@ func HashMiddleware(key string) func(http.Handler) http.Handler {
 				defer r.Body.Close()
 
 				requestHash := r.Header.Get(hash.HeaderName)
-				if requestHash == "" || !hash.Check(body, key, requestHash) {
+				if requestHash != "" && !hash.Check(body, key, requestHash) {
 					http.Error(w, "invalid hash", http.StatusBadRequest)
 					return
 				}
