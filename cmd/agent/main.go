@@ -102,18 +102,7 @@ func sendRequestOnce(client *http.Client, url string, body []byte, key string) e
 	}
 	defer response.Body.Close()
 
-	var responseBody io.Reader = response.Body
-	if response.Header.Get("Content-Encoding") == "gzip" {
-		gzReader, err := gzip.NewReader(response.Body)
-		if err != nil {
-			return fmt.Errorf("gzip read response body: %w", err)
-		}
-		defer gzReader.Close()
-
-		responseBody = gzReader
-	}
-
-	responseBytes, err := io.ReadAll(responseBody)
+	responseBytes, err := io.ReadAll(response.Body)
 	if err != nil {
 		return fmt.Errorf("read response body: %w", err)
 	}
@@ -122,6 +111,18 @@ func sendRequestOnce(client *http.Client, url string, body []byte, key string) e
 		responseHash := response.Header.Get(hash.HeaderName)
 		if responseHash == "" || !hash.Check(responseBytes, key, responseHash) {
 			return fmt.Errorf("invalid response hash")
+		}
+	}
+
+	if response.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(bytes.NewReader(responseBytes))
+		if err != nil {
+			return fmt.Errorf("gzip read response body: %w", err)
+		}
+		defer gzReader.Close()
+
+		if _, err := io.ReadAll(gzReader); err != nil {
+			return fmt.Errorf("read gzip response body: %w", err)
 		}
 	}
 
