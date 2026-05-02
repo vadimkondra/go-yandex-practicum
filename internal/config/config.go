@@ -5,6 +5,7 @@ type AgentConfig struct {
 	PollInterval   int
 	ReportInterval int
 	Key            string
+	RateLimit      int
 }
 
 type ServerConfig struct {

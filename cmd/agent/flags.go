@@ -16,7 +16,7 @@ func ParseFlags() config.AgentConfig {
 	flag.IntVar(&cfg.PollInterval, "p", 2, "polling interval for collecting metrics")
 	flag.IntVar(&cfg.ReportInterval, "r", 10, "reporting interval for sending metrics to server")
 	flag.StringVar(&cfg.Key, "k", "", "hash key")
-
+	flag.IntVar(&cfg.RateLimit, "l", 100, "rate limit for sending metrics to server")
 	flag.Parse()
 
 	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
@@ -41,6 +41,17 @@ func ParseFlags() config.AgentConfig {
 
 	if envRunKey := os.Getenv("KEY"); envRunKey != "" {
 		cfg.Key = envRunKey
+	}
+
+	if envRateLimit := os.Getenv("RATE_LIMIT"); envRateLimit != "" {
+		value, err := strconv.Atoi(envRateLimit)
+		if err == nil {
+			cfg.RateLimit = value
+		}
+	}
+
+	if cfg.RateLimit <= 0 {
+		cfg.RateLimit = 1
 	}
 
 	return cfg
