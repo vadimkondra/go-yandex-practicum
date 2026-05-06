@@ -10,7 +10,6 @@ import (
 	"go-yandex-practicum/internal/hash"
 	"go-yandex-practicum/internal/retry"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -21,6 +20,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -68,7 +69,7 @@ func sendWorker(ctx context.Context, wg *sync.WaitGroup, serverAddress string, c
 			return
 		case metric := <-metricsCh:
 			if err := sendMetric(serverAddress, client, metric, key); err != nil {
-				log.Println("send metric error:", err)
+				zap.L().Error("send metric error", zap.Error(err))
 			}
 		}
 	}
@@ -108,7 +109,7 @@ func collectPSUtilMetrics(ctx context.Context, pollInterval int, metricsCh chan<
 		case <-pollTicker.C:
 			vmStat, err := mem.VirtualMemory()
 			if err != nil {
-				log.Println("collect memory metrics error:", err)
+				zap.L().Error("collect memory metrics error", zap.Error(err))
 				continue
 			}
 
@@ -120,7 +121,7 @@ func collectPSUtilMetrics(ctx context.Context, pollInterval int, metricsCh chan<
 
 			cpuPercentages, err := cpu.Percent(0, true)
 			if err != nil {
-				log.Println("collect cpu metrics error:", err)
+				zap.L().Error("collect cpu metrics error", zap.Error(err))
 				continue
 			}
 
