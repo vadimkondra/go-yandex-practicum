@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/middleware"
 	"go-yandex-practicum/internal/model"
 	"go-yandex-practicum/internal/service"
@@ -15,17 +16,19 @@ import (
 
 type ServerHandler struct {
 	service *service.MetricsService
+	cfg     config.ServerConfig
 }
 
-func NewServerHandler(service *service.MetricsService) *ServerHandler {
-	return &ServerHandler{service: service}
+func NewServerHandler(service *service.MetricsService, cfg config.ServerConfig) *ServerHandler {
+	return &ServerHandler{service: service, cfg: cfg}
 }
 
-func ConfigServerRouter(service *service.MetricsService) http.Handler {
-	h := NewServerHandler(service)
+func ConfigServerRouter(service *service.MetricsService, cfg config.ServerConfig) http.Handler {
+	h := NewServerHandler(service, cfg)
 
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware)
+	r.Use(middleware.HashMiddleware(cfg.Key))
 	r.Use(middleware.GzipMiddleware)
 
 	r.Get("/", h.GetMetricsListHandler)

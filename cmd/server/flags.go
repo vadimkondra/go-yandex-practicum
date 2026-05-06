@@ -15,6 +15,7 @@ func ParseFlags() config.ServerConfig {
 	flag.StringVar(&cfg.FileStorePath, "f", "./metric-data", "path to store data")
 	flag.BoolVar(&cfg.Restore, "r", false, "restore metric data")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database dsn")
+	flag.StringVar(&cfg.Key, "k", "", "hash key")
 
 	flag.Parse()
 
@@ -44,6 +45,10 @@ func ParseFlags() config.ServerConfig {
 		if err == nil {
 			cfg.Restore = parsedRestore
 		}
+	}
+
+	if hashKey := os.Getenv("KEY"); hashKey != "" {
+		cfg.Key = hashKey
 	}
 
 	return cfg

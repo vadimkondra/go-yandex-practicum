@@ -3,18 +3,28 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-yandex-practicum/internal/hash"
 	"go-yandex-practicum/internal/retry"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
 	"runtime"
+	"sync"
+	"syscall"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 
 	"go-yandex-practicum/internal/model"
 )
@@ -23,37 +33,145 @@ var pollCount int64
 
 func main() {
 	cfg := ParseFlags()
-
 	client := &http.Client{}
 
-	var metrics []model.Metrics
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	pollTicker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
-	reportTicker := time.NewTicker(time.Duration(cfg.ReportInterval) * time.Second)
+	metricsCh := make(chan []model.Metrics, cfg.RateLimit)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < cfg.RateLimit; i++ {
+		wg.Add(1)
+		go sendWorker(ctx, &wg, cfg.ServerAddress, client, metricsCh, cfg.Key)
+	}
+
+	go collectRuntimeMetrics(ctx, cfg.PollInterval, metricsCh)
+	go collectPSUtilMetrics(ctx, cfg.PollInterval, metricsCh)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	<-sigCh
+	cancel()
+
+	wg.Wait()
+}
+
+func sendWorker(ctx context.Context, wg *sync.WaitGroup, serverAddress string, client *http.Client, metricsCh <-chan []model.Metrics, key string) {
+	defer wg.Done()
 
 	for {
 		select {
-		case <-pollTicker.C:
-			// обновляем метрики runtime
-			metrics = fillMetrics()
+		case <-ctx.Done():
+			return
+		case metrics, ok := <-metricsCh:
+			if !ok {
+				return
+			}
 
-		case <-reportTicker.C:
-			// отправляем метрики на сервер
-			if pollCount > 0 {
-				err := sendMetrics(cfg.ServerAddress, client, metrics)
-				if err != nil {
-					log.Println("send metrics error:", err)
-				} else {
-					pollCount = 0
-				}
+			if len(metrics) == 0 {
+				continue
+			}
+
+			if err := sendMetricsBatch(serverAddress, client, metrics, key); err != nil {
+				zap.L().Error("send metrics batch error", zap.Error(err))
 			}
 		}
 	}
 }
 
-func sendRequest(client *http.Client, url string, body []byte) error {
+func collectRuntimeMetrics(ctx context.Context, pollInterval int, metricsCh chan<- []model.Metrics) {
+	pollTicker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+	defer pollTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-pollTicker.C:
+			metrics := fillMetrics()
+			if len(metrics) == 0 {
+				continue
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case metricsCh <- metrics:
+			}
+		}
+	}
+}
+
+func collectPSUtilMetrics(ctx context.Context, pollInterval int, metricsCh chan<- []model.Metrics) {
+	pollTicker := time.NewTicker(time.Duration(pollInterval) * time.Second)
+	defer pollTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-pollTicker.C:
+			metrics := make([]model.Metrics, 0)
+
+			vmStat, err := mem.VirtualMemory()
+			if err != nil {
+				zap.L().Error("collect memory metrics error", zap.Error(err))
+				continue
+			}
+
+			totalMemory := float64(vmStat.Total)
+			freeMemory := float64(vmStat.Free)
+
+			metrics = append(metrics,
+				model.Metrics{ID: "TotalMemory", MType: model.Gauge, Value: &totalMemory},
+				model.Metrics{ID: "FreeMemory", MType: model.Gauge, Value: &freeMemory},
+			)
+
+			cpuPercentages, err := cpu.Percent(0, true)
+			if err != nil {
+				zap.L().Error("collect cpu metrics error", zap.Error(err))
+				continue
+			}
+
+			for i, cpuValue := range cpuPercentages {
+				value := cpuValue
+				metrics = append(metrics, model.Metrics{ID: fmt.Sprintf("CPUutilization%d", i+1), MType: model.Gauge, Value: &value})
+			}
+
+			if len(metrics) == 0 {
+				continue
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case metricsCh <- metrics:
+			}
+		}
+	}
+}
+
+func sendMetricsBatch(serverAddress string, client *http.Client, metrics []model.Metrics, key string) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	body, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("marshal metrics batch: %w", err)
+	}
+
+	url := "http://" + serverAddress + "/updates/"
+
+	return sendRequest(client, url, body, key)
+}
+
+func sendRequest(client *http.Client, url string, body []byte, key string) error {
 	return retry.Do(func() error {
-		return sendRequestOnce(client, url, body)
+		return sendRequestOnce(client, url, body, key)
 	}, isRetriableHTTPError)
 }
 
@@ -71,7 +189,7 @@ func isRetriableHTTPError(err error) bool {
 	return errors.As(err, &urlErr)
 }
 
-func sendRequestOnce(client *http.Client, url string, body []byte) error {
+func sendRequestOnce(client *http.Client, url string, body []byte, key string) error {
 	var buf bytes.Buffer
 
 	gz := gzip.NewWriter(&buf)
@@ -91,26 +209,38 @@ func sendRequestOnce(client *http.Client, url string, body []byte) error {
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
 
+	if key != "" {
+		req.Header.Set(hash.HeaderName, hash.Calculate(buf.Bytes(), key))
+	}
+
 	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer response.Body.Close()
 
-	var responseBody io.Reader = response.Body
+	responseBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if key != "" {
+		responseHash := response.Header.Get(hash.HeaderName)
+		if responseHash == "" || !hash.Check(responseBytes, key, responseHash) {
+			return fmt.Errorf("invalid response hash")
+		}
+	}
+
 	if response.Header.Get("Content-Encoding") == "gzip" {
-		gzReader, err := gzip.NewReader(response.Body)
+		gzReader, err := gzip.NewReader(bytes.NewReader(responseBytes))
 		if err != nil {
 			return fmt.Errorf("gzip read response body: %w", err)
 		}
 		defer gzReader.Close()
 
-		responseBody = gzReader
-	}
-
-	_, err = io.ReadAll(responseBody)
-	if err != nil {
-		return fmt.Errorf("read response body: %w", err)
+		if _, err := io.ReadAll(gzReader); err != nil {
+			return fmt.Errorf("read gzip response body: %w", err)
+		}
 	}
 
 	if response.StatusCode != http.StatusOK {
@@ -120,9 +250,9 @@ func sendRequestOnce(client *http.Client, url string, body []byte) error {
 	return nil
 }
 
-func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metrics) error {
+func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metrics, key string) error {
 	for _, metric := range metrics {
-		if err := sendMetric(serverAddress, client, metric); err != nil {
+		if err := sendMetric(serverAddress, client, metric, key); err != nil {
 			return err
 		}
 	}
@@ -130,7 +260,7 @@ func sendMetrics(serverAddress string, client *http.Client, metrics []model.Metr
 	return nil
 }
 
-func sendMetric(serverAddress string, client *http.Client, metric model.Metrics) error {
+func sendMetric(serverAddress string, client *http.Client, metric model.Metrics, key string) error {
 	switch metric.MType {
 	case model.Gauge:
 		if metric.Value == nil {
@@ -153,7 +283,7 @@ func sendMetric(serverAddress string, client *http.Client, metric model.Metrics)
 
 	url := "http://" + serverAddress + "/update/"
 
-	return sendRequest(client, url, body)
+	return sendRequest(client, url, body, key)
 }
 
 func fillMetrics() []model.Metrics {

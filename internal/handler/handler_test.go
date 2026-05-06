@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"go-yandex-practicum/internal/config"
 	"go-yandex-practicum/internal/service"
 	"go-yandex-practicum/internal/store"
 	"net/http"
@@ -11,9 +12,12 @@ import (
 )
 
 func setupRouter() http.Handler {
+	cfg := &config.ServerConfig{
+		Key: "test-secret-key",
+	}
 	storage := store.NewMemoryStorage()
 	metricsService := service.NewMetricsService(storage)
-	h := NewServerHandler(metricsService)
+	h := NewServerHandler(metricsService, *cfg)
 
 	r := chi.NewRouter()
 

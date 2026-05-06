@@ -51,8 +51,8 @@ func (s *MetricsService) UpdateMetricsBatch(metrics []model.Metrics) ([]model.Me
 
 var service = NewMetricsService(store.NewMemoryStorage())
 
-func SetStorage(s store.Storage) {
-	service = NewMetricsService(s)
+func SetStorage(storage store.Storage) {
+	service = NewMetricsService(storage)
 }
 
 func SetGauge(metricName string, metricValue float64) error {
